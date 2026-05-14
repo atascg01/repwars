@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/crypto";
+import { syncHevyWorkouts } from "@/services/hevySync";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -20,14 +22,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const encrypted = await encrypt(apiKey.trim());
+  const plainKey = apiKey.trim();
+  const encrypted = await encrypt(plainKey);
 
   await prisma.user.update({
     where: { id: session.user.id },
     data: { hevyApiKeyEncrypted: encrypted },
   });
 
-  return NextResponse.json({ success: true });
+  // Trigger an initial sync so the user sees their data immediately
+  let syncResult: { imported: number; skipped: number } | null = null;
+  try {
+    syncResult = await syncHevyWorkouts(session.user.id, plainKey);
+  } catch (err) {
+    console.error("Initial Hevy sync failed:", err);
+    // Don't fail the save if sync fails — key is still saved
+  }
+
+  return NextResponse.json({ success: true, sync: syncResult });
 }
 
 export async function GET() {
@@ -46,34 +58,3 @@ export async function GET() {
   });
 }
 
-// ── Simple encryption using Web Crypto ──
-
-async function encrypt(text: string): Promise<string> {
-  // Derive encryption key from env secret (or a fallback for dev)
-  const secret = process.env.ENCRYPTION_KEY ?? "hevy-social-mvp-default-key-min-32-ch!!";
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret).slice(0, 32),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt"]
-  );
-
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    keyMaterial,
-    encoder.encode(text)
-  );
-
-  // Return iv + ciphertext as hex
-  const ivHex = Array.from(iv)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const ctHex = Array.from(new Uint8Array(encrypted))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  return `${ivHex}:${ctHex}`;
-}

@@ -25,7 +25,12 @@ export default function ImportPage() {
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [csvResult, setCsvResult] = useState<{
+    imported: number;
+    skipped: number;
+  } | null>(null);
+  const [syncResult, setSyncResult] = useState<{
     imported: number;
     skipped: number;
   } | null>(null);
@@ -54,13 +59,37 @@ export default function ImportPage() {
         body: JSON.stringify({ apiKey }),
       });
       if (res.ok) {
+        const data = await res.json();
         setApiKeySaved(true);
         setApiKey("");
+        if (data.sync) {
+          setSyncResult(data.sync);
+          router.refresh();
+        }
       }
     } catch (err) {
       console.error("Failed to save API key:", err);
     } finally {
       setSavingKey(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setSyncResult({
+          imported: data.imported,
+          skipped: data.skipped,
+        });
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Sync failed:", err);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -176,25 +205,56 @@ export default function ImportPage() {
         {/* API Key Tab */}
         <TabsContent value="api" className="mt-6 space-y-6">
           {apiKeySaved ? (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-8 text-center">
-              <div className="h-14 w-14 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-                <ShieldCheck className="h-7 w-7 text-emerald-400" />
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-8 text-center">
+                <div className="h-14 w-14 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheck className="h-7 w-7 text-emerald-400" />
+                </div>
+                <h3 className="text-lg font-bold mb-1">API Key Connected</h3>
+                <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto">
+                  Your workouts will sync automatically every 24 hours. New data
+                  appears in challenges automatically.
+                </p>
+                <div className="flex items-center justify-center gap-3 mb-6">
+                  <Badge className="gap-1 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Verified Data
+                  </Badge>
+                  <Badge className="gap-1 bg-amber-500/20 text-amber-400 border-amber-500/30">
+                    <RefreshCw className="h-3 w-3" />
+                    Auto-Sync Active
+                  </Badge>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleSyncNow}
+                  disabled={syncing}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </Button>
               </div>
-              <h3 className="text-lg font-bold mb-1">API Key Connected</h3>
-              <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto">
-                Your workouts will sync automatically every 24 hours. New data
-                appears in challenges automatically.
-              </p>
-              <div className="flex items-center justify-center gap-3">
-                <Badge className="gap-1 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Verified Data
-                </Badge>
-                <Badge className="gap-1 bg-amber-500/20 text-amber-400 border-amber-500/30">
-                  <RefreshCw className="h-3 w-3" />
-                  Auto-Sync Active
-                </Badge>
-              </div>
+
+              {syncResult && (
+                <Card className="border-emerald-500/30 bg-emerald-500/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                      <div>
+                        <p className="font-semibold text-emerald-400">
+                          Sync complete
+                        </p>
+                        <p className="text-sm text-zinc-400">
+                          {syncResult.imported} workouts imported
+                          {syncResult.skipped > 0 &&
+                            ` · ${syncResult.skipped} duplicates skipped`}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           ) : (
             <div className="space-y-6">

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,49 +27,112 @@ import {
   Swords,
   Flame,
   Calendar,
+  Loader2,
 } from "lucide-react";
 
-// Mock data — replace with API calls
-const mockCrews = [
-  {
-    id: "1",
-    name: "Iron Brotherhood",
-    description: "Push, pull, legs. Every day.",
-    avatar: null,
-    privacy: "public",
-    memberCount: 12,
-    activeChallenge: "Iron King — Week 20",
-    myRole: "MEMBER",
-    inviteCode: "XK9M2P",
-  },
-  {
-    id: "2",
-    name: "Gym Ratz",
-    description: "Casual lifters, serious gains.",
-    avatar: null,
-    privacy: "invite_only",
-    memberCount: 8,
-    activeChallenge: null,
-    myRole: "OWNER",
-    inviteCode: "RT7Q4N",
-  },
-  {
-    id: "3",
-    name: "Callejeros Fit",
-    description: "Entrenando juntos aunque estemos lejos.",
-    avatar: null,
-    privacy: "private",
-    memberCount: 5,
-    activeChallenge: null,
-    myRole: "MEMBER",
-    inviteCode: "LP3W8V",
-  },
-];
+interface Crew {
+  id: string;
+  name: string;
+  description: string | null;
+  avatar: string | null;
+  privacy: string;
+  memberCount: number;
+  myRole: string;
+  inviteCode: string;
+}
 
 export default function CrewsPage() {
+  const router = useRouter();
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("my-crews");
   const [inviteCode, setInviteCode] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [joinError, setJoinError] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createDesc, setCreateDesc] = useState("");
+  const [createPrivacy, setCreatePrivacy] = useState("INVITE_ONLY");
+
+  const fetchCrews = useCallback(async () => {
+    try {
+      const res = await fetch("/api/crews");
+      if (res.ok) {
+        const data = await res.json();
+        setCrews(data.crews ?? []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch crews:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCrews();
+  }, [fetchCrews]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createName.trim()) return;
+    setCreateLoading(true);
+    setCreateError("");
+
+    try {
+      const res = await fetch("/api/crews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: createName,
+          description: createDesc,
+          privacy: createPrivacy,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(data.error ?? "Failed to create crew");
+        return;
+      }
+      setShowCreate(false);
+      setCreateName("");
+      setCreateDesc("");
+      setCreatePrivacy("INVITE_ONLY");
+      await fetchCrews();
+      router.refresh();
+    } catch (err) {
+      setCreateError("Network error");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (inviteCode.length < 8) return;
+    setJoinLoading(true);
+    setJoinError("");
+
+    try {
+      const res = await fetch("/api/crews/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setJoinError(data.error ?? "Failed to join crew");
+        return;
+      }
+      setInviteCode("");
+      await fetchCrews();
+      router.refresh();
+    } catch (err) {
+      setJoinError("Network error");
+    } finally {
+      setJoinLoading(false);
+    }
+  };
 
   return (
     <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-8">
@@ -91,37 +155,63 @@ export default function CrewsPage() {
             <DialogHeader>
               <DialogTitle>Create a Crew</DialogTitle>
             </DialogHeader>
-            <form className="space-y-4 mt-4">
+            <form onSubmit={handleCreate} className="space-y-4 mt-4">
               <div>
                 <label className="text-sm font-medium">Crew Name</label>
-                <Input placeholder="Iron Brotherhood" className="mt-1.5" />
+                <Input
+                  placeholder="Iron Brotherhood"
+                  className="mt-1.5"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  required
+                />
               </div>
               <div>
                 <label className="text-sm font-medium">
                   Description <span className="text-zinc-500">(optional)</span>
                 </label>
-                <Input placeholder="What's your crew about?" className="mt-1.5" />
+                <Input
+                  placeholder="What's your crew about?"
+                  className="mt-1.5"
+                  value={createDesc}
+                  onChange={(e) => setCreateDesc(e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-sm font-medium">Privacy</label>
                 <div className="grid grid-cols-3 gap-2 mt-1.5">
                   {[
-                    { value: "public", icon: Globe, label: "Public" },
-                    { value: "invite_only", icon: Lock, label: "Invite Only" },
-                    { value: "private", icon: Shield, label: "Private" },
+                    { value: "PUBLIC", icon: Globe, label: "Public" },
+                    { value: "INVITE_ONLY", icon: Lock, label: "Invite Only" },
+                    { value: "PRIVATE", icon: Shield, label: "Private" },
                   ].map(({ value, icon: Icon, label }) => (
                     <button
                       key={value}
                       type="button"
-                      className="flex flex-col items-center gap-1.5 rounded-lg border border-zinc-800 p-3 text-xs hover:border-zinc-600 transition-colors"
+                      onClick={() => setCreatePrivacy(value)}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 text-xs transition-colors ${
+                        createPrivacy === value
+                          ? "border-amber-500 bg-amber-500/10 text-amber-400"
+                          : "border-zinc-800 hover:border-zinc-600"
+                      }`}
                     >
-                      <Icon className="h-4 w-4 text-zinc-400" />
+                      <Icon className="h-4 w-4" />
                       {label}
                     </button>
                   ))}
                 </div>
               </div>
-              <Button type="submit" className="w-full">
+              {createError && (
+                <p className="text-sm text-red-400">{createError}</p>
+              )}
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createLoading || !createName.trim()}
+              >
+                {createLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
                 Create Crew
               </Button>
             </form>
@@ -147,16 +237,22 @@ export default function CrewsPage() {
         </TabsList>
 
         <TabsContent value="my-crews" className="mt-6">
-          {mockCrews.length === 0 ? (
-            <EmptyState
-              title="No crews yet"
-              description="Create your first crew or join one with an invite code."
-              action="Create Crew"
-              onAction={() => setShowCreate(true)}
-            />
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+            </div>
+          ) : crews.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 p-16 text-center bg-zinc-900/30">
+              <Users className="h-16 w-16 mx-auto text-zinc-700 mb-6" />
+              <h3 className="text-xl font-bold mb-2">No crews yet</h3>
+              <p className="text-zinc-500 max-w-sm mx-auto mb-6">
+                Create your first crew or join one with an invite code.
+              </p>
+              <Button onClick={() => setShowCreate(true)}>Create Crew</Button>
+            </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
-              {mockCrews.map((crew) => (
+              {crews.map((crew) => (
                 <CrewCard key={crew.id} crew={crew} />
               ))}
             </div>
@@ -178,8 +274,20 @@ export default function CrewsPage() {
                   }
                   className="font-mono text-lg tracking-widest uppercase"
                 />
-                <Button disabled={inviteCode.length < 8}>Join</Button>
+                <Button
+                  onClick={handleJoin}
+                  disabled={inviteCode.length < 8 || joinLoading}
+                >
+                  {joinLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Join"
+                  )}
+                </Button>
               </div>
+              {joinError && (
+                <p className="text-sm text-red-400 mt-3">{joinError}</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -199,17 +307,13 @@ export default function CrewsPage() {
   );
 }
 
-function CrewCard({
-  crew,
-}: {
-  crew: (typeof mockCrews)[number];
-}) {
-  const privacyIcons = {
-    public: Globe,
-    invite_only: Lock,
-    private: Shield,
+function CrewCard({ crew }: { crew: Crew }) {
+  const privacyIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+    PUBLIC: Globe,
+    INVITE_ONLY: Lock,
+    PRIVATE: Shield,
   };
-  const PrivacyIcon = privacyIcons[crew.privacy as keyof typeof privacyIcons];
+  const PrivacyIcon = privacyIcons[crew.privacy] ?? Lock;
 
   return (
     <Link href={`/dashboard/crews/${crew.id}`}>
@@ -237,7 +341,7 @@ function CrewCard({
             {crew.name}
           </h3>
           <p className="text-sm text-zinc-500 mt-1 line-clamp-2">
-            {crew.description}
+            {crew.description ?? "No description"}
           </p>
 
           <div className="flex items-center gap-4 mt-4 text-xs text-zinc-500">
@@ -245,12 +349,6 @@ function CrewCard({
               <Users className="h-3.5 w-3.5" />
               {crew.memberCount} members
             </span>
-            {crew.activeChallenge && (
-              <span className="flex items-center gap-1 text-amber-400">
-                <Swords className="h-3.5 w-3.5" />
-                Active challenge
-              </span>
-            )}
           </div>
 
           {crew.inviteCode && (
@@ -268,26 +366,5 @@ function CrewCard({
         </CardContent>
       </Card>
     </Link>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-  action,
-  onAction,
-}: {
-  title: string;
-  description: string;
-  action: string;
-  onAction: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-800 p-16 text-center bg-zinc-900/30">
-      <Users className="h-16 w-16 mx-auto text-zinc-700 mb-6" />
-      <h3 className="text-xl font-bold mb-2">{title}</h3>
-      <p className="text-zinc-500 max-w-sm mx-auto mb-6">{description}</p>
-      <Button onClick={onAction}>{action}</Button>
-    </div>
   );
 }

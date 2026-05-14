@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,20 +16,52 @@ import {
   FileUp,
   ShieldCheck,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 
 export default function ImportPage() {
   const router = useRouter();
   const [apiKey, setApiKey] = useState("");
   const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [csvResult, setCsvResult] = useState<{
     imported: number;
     skipped: number;
   } | null>(null);
 
+  // Check if API key already exists
+  useEffect(() => {
+    const checkKey = async () => {
+      try {
+        const res = await fetch("/api/settings/apikey");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.hasApiKey) setApiKeySaved(true);
+        }
+      } catch { /* ignore */ }
+    };
+    checkKey();
+  }, []);
+
   const handleSaveApiKey = async () => {
-    setApiKeySaved(true);
+    if (apiKey.length < 10) return;
+    setSavingKey(true);
+    try {
+      const res = await fetch("/api/settings/apikey", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      if (res.ok) {
+        setApiKeySaved(true);
+        setApiKey("");
+      }
+    } catch (err) {
+      console.error("Failed to save API key:", err);
+    } finally {
+      setSavingKey(false);
+    }
   };
 
   const handleCsvUpload = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -212,11 +244,15 @@ export default function ImportPage() {
 
                     <Button
                       onClick={handleSaveApiKey}
-                      disabled={apiKey.length < 10}
+                      disabled={apiKey.length < 10 || savingKey}
                       className="w-full gap-2"
                     >
-                      <Zap className="h-4 w-4" />
-                      Connect API Key
+                      {savingKey ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Zap className="h-4 w-4" />
+                      )}
+                      {savingKey ? "Saving..." : "Connect API Key"}
                     </Button>
                   </div>
                 </CardContent>

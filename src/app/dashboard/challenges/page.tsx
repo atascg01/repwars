@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Swords,
   Trophy,
@@ -21,9 +21,20 @@ import {
   Weight,
   CalendarDays,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
-const challengeTypes = {
+// ── Type metadata ──
+
+const challengeTypes: Record<string, {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  desc: string;
+  color: string;
+  bg: string;
+  border: string;
+  unit: string;
+}> = {
   IRON_KING: {
     icon: Weight,
     label: "Iron King",
@@ -71,62 +82,46 @@ const challengeTypes = {
   },
 };
 
-const activeChallenges = [
-  {
-    id: "c1",
-    crewName: "Iron Brotherhood",
-    crewAvatar: "I",
-    type: "IRON_KING" as const,
-    title: "Iron King — Week 20",
-    leader: { name: "Andress", initials: "AN", score: 84200 },
-    participants: 12,
-    yourRank: 1,
-    yourScore: 84200,
-    endsIn: "3d 14h",
-  },
-  {
-    id: "c2",
-    crewName: "Gym Ratz",
-    crewAvatar: "G",
-    type: "PR_BREAKER" as const,
-    title: "Squat PR Battle",
-    leader: { name: "Carlos", initials: "CR", score: 4 },
-    participants: 8,
-    yourRank: 3,
-    yourScore: 2,
-    endsIn: "1d 6h",
-  },
-];
+interface ChallengeItem {
+  id: string;
+  crewName: string;
+  type: string;
+  title: string;
+  leader: { name: string; initials: string; score: number } | null;
+  participants: number;
+  yourRank: number | null;
+  yourScore: number;
+  endDate?: string;
+  winner?: { name: string; initials: string } | null;
+  endedAt?: string;
+}
 
-const completedChallenges = [
-  {
-    id: "c0",
-    crewName: "Iron Brotherhood",
-    crewAvatar: "I",
-    type: "CONSISTENCY" as const,
-    title: "Consistency King — Week 19",
-    winner: { name: "María", initials: "MA" },
-    participants: 10,
-    yourRank: 4,
-    yourScore: 4,
-    endedAt: "May 10, 2026",
-  },
-  {
-    id: "c-1",
-    crewName: "Iron Brotherhood",
-    crewAvatar: "I",
-    type: "GRINDER" as const,
-    title: "Grinder — Week 18",
-    winner: { name: "Andress", initials: "AN" },
-    participants: 11,
-    yourRank: 1,
-    yourScore: 31200,
-    endedAt: "May 3, 2026",
-  },
-];
+// ── Page ──
 
 export default function ChallengesPage() {
   const [activeTab, setActiveTab] = useState("active");
+  const [active, setActive] = useState<ChallengeItem[]>([]);
+  const [completed, setCompleted] = useState<ChallengeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchChallenges = useCallback(async () => {
+    try {
+      const res = await fetch("/api/challenges");
+      if (res.ok) {
+        const data = await res.json();
+        setActive(data.active ?? []);
+        setCompleted(data.completed ?? []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch challenges:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchChallenges();
+  }, [fetchChallenges]);
 
   return (
     <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-8">
@@ -167,9 +162,11 @@ export default function ChallengesPage() {
           <TabsTrigger value="active" className="gap-2">
             <Swords className="h-4 w-4" />
             Active
-            <Badge className="ml-1 bg-amber-500/20 text-amber-400 border-0 h-5 px-1.5 text-[11px]">
-              {activeChallenges.length}
-            </Badge>
+            {active.length > 0 && (
+              <Badge className="ml-1 bg-amber-500/20 text-amber-400 border-0 h-5 px-1.5 text-[11px]">
+                {active.length}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="completed" className="gap-2">
             <Trophy className="h-4 w-4" />
@@ -178,7 +175,11 @@ export default function ChallengesPage() {
         </TabsList>
 
         <TabsContent value="active" className="mt-6">
-          {activeChallenges.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+            </div>
+          ) : active.length === 0 ? (
             <EmptyState
               icon={<Swords className="h-12 w-12" />}
               title="No Active Challenges"
@@ -187,36 +188,37 @@ export default function ChallengesPage() {
             />
           ) : (
             <div className="space-y-4">
-              {activeChallenges.map((ch) => {
-                const type = challengeTypes[ch.type];
-                const Icon = type.icon;
+              {active.map((ch) => {
+                const meta = challengeTypes[ch.type];
+                if (!meta) return null;
+                const Icon = meta.icon;
+
+                const endsIn = ch.endDate
+                  ? getTimeLeft(ch.endDate)
+                  : "?";
+
                 return (
                   <Link key={ch.id} href={`/dashboard/challenges/${ch.id}`}>
                     <Card
-                      className={`border-zinc-800 bg-zinc-900/50 hover:${type.border} hover:bg-zinc-900 transition-all cursor-pointer group`}
+                      className="border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-all cursor-pointer group"
                     >
                       <CardContent className="p-5">
                         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                          {/* Left: Info */}
                           <div className="flex items-center gap-4">
-                            <div
-                              className={`h-12 w-12 rounded-xl ${type.bg} flex items-center justify-center shrink-0`}
-                            >
-                              <Icon className={`h-6 w-6 ${type.color}`} />
+                            <div className={`h-12 w-12 rounded-xl ${meta.bg} flex items-center justify-center shrink-0`}>
+                              <Icon className={`h-6 w-6 ${meta.color}`} />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="font-bold text-lg">
-                                  {ch.title}
-                                </h3>
-                                <Badge className={`${type.bg} ${type.color} border-0`}>
-                                  {type.label}
+                                <h3 className="font-bold text-lg">{ch.title}</h3>
+                                <Badge className={`${meta.bg} ${meta.color} border-0`}>
+                                  {meta.label}
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-3 text-xs text-zinc-500 mt-1">
                                 <span className="flex items-center gap-1">
                                   <div className="h-5 w-5 rounded-md bg-zinc-800 flex items-center justify-center text-[10px] font-bold text-zinc-400">
-                                    {ch.crewAvatar}
+                                    {ch.crewName.charAt(0)}
                                   </div>
                                   {ch.crewName}
                                 </span>
@@ -226,49 +228,50 @@ export default function ChallengesPage() {
                                 </span>
                                 <span className="flex items-center gap-1 text-amber-400">
                                   <Clock className="h-3 w-3" />
-                                  {ch.endsIn} left
+                                  {endsIn} left
                                 </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Right: Stats */}
                           <div className="flex items-center gap-6">
-                            {/* Leader */}
-                            <div className="text-center">
-                              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
-                                Leader
-                              </p>
-                              <div className="flex items-center gap-1.5">
-                                <Avatar className="h-5 w-5">
-                                  <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
-                                    {ch.leader.initials}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm font-semibold">
-                                  {ch.leader.name}
-                                </span>
+                            {ch.leader && (
+                              <div className="text-center">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                  Leader
+                                </p>
+                                <div className="flex items-center gap-1.5">
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
+                                      {ch.leader.initials}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm font-semibold">
+                                    {ch.leader.name}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500">
+                                  {ch.leader.score.toLocaleString()}
+                                  {meta.unit}
+                                </p>
                               </div>
-                              <p className="text-[11px] text-zinc-500">
-                                {ch.leader.score.toLocaleString()}
-                                {challengeTypes[ch.type]?.unit ?? ""}
-                              </p>
-                            </div>
+                            )}
 
-                            {/* Your Rank */}
-                            <div className="text-center">
-                              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
-                                You
-                              </p>
-                              <div className="flex items-center justify-center gap-1">
-                                <span className="text-2xl font-black tabular-nums">
-                                  #{ch.yourRank}
-                                </span>
+                            {ch.yourRank && (
+                              <div className="text-center">
+                                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                                  You
+                                </p>
+                                <div className="flex items-center justify-center gap-1">
+                                  <span className="text-2xl font-black tabular-nums">
+                                    #{ch.yourRank}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500">
+                                  {ch.yourScore.toLocaleString()}
+                                </p>
                               </div>
-                              <p className="text-[11px] text-zinc-500">
-                                {ch.yourScore.toLocaleString()}
-                              </p>
-                            </div>
+                            )}
 
                             <ChevronRight className="h-5 w-5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
                           </div>
@@ -283,7 +286,11 @@ export default function ChallengesPage() {
         </TabsContent>
 
         <TabsContent value="completed" className="mt-6">
-          {completedChallenges.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+            </div>
+          ) : completed.length === 0 ? (
             <EmptyState
               icon={<Trophy className="h-12 w-12" />}
               title="No Completed Challenges"
@@ -292,59 +299,66 @@ export default function ChallengesPage() {
             />
           ) : (
             <div className="space-y-3">
-              {completedChallenges.map((ch) => {
-                const type = challengeTypes[ch.type];
-                const Icon = type.icon;
+              {completed.map((ch) => {
+                const meta = challengeTypes[ch.type];
+                if (!meta) return null;
+                const Icon = meta.icon;
                 return (
                   <Link key={ch.id} href={`/dashboard/challenges/${ch.id}`}>
                     <Card className="border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-all cursor-pointer">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`h-10 w-10 rounded-xl ${type.bg} flex items-center justify-center`}>
-                              <Icon className={`h-5 w-5 ${type.color}`} />
+                            <div className={`h-10 w-10 rounded-xl ${meta.bg} flex items-center justify-center`}>
+                              <Icon className={`h-5 w-5 ${meta.color}`} />
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="font-bold">{ch.title}</h3>
-                                <Badge className={`${type.bg} ${type.color} border-0 text-[11px]`}>
-                                  {type.label}
+                                <Badge className={`${meta.bg} ${meta.color} border-0 text-[11px]`}>
+                                  {meta.label}
                                 </Badge>
                               </div>
                               <p className="text-xs text-zinc-500">
-                                {ch.crewName} · {ch.participants} participants · Ended {ch.endedAt}
+                                {ch.crewName} · {ch.participants} participants
+                                {ch.endedAt &&
+                                  ` · Ended ${new Date(ch.endedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                               </p>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <p className="text-[10px] text-zinc-500 uppercase">Winner</p>
-                              <div className="flex items-center gap-1.5">
-                                <Avatar className="h-5 w-5">
-                                  <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
-                                    {ch.winner.initials}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm font-semibold text-amber-400">
-                                  {ch.winner.name}
+                            {ch.winner && (
+                              <div className="text-right">
+                                <p className="text-[10px] text-zinc-500 uppercase">Winner</p>
+                                <div className="flex items-center gap-1.5">
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
+                                      {ch.winner.initials}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm font-semibold text-amber-400">
+                                    {ch.winner.name}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {ch.yourRank !== null && (
+                              <div className="text-center">
+                                <p className="text-[10px] text-zinc-500 uppercase">You</p>
+                                <span
+                                  className={`text-lg font-black ${
+                                    ch.yourRank === 1
+                                      ? "text-amber-400"
+                                      : ch.yourRank <= 3
+                                      ? "text-zinc-300"
+                                      : "text-zinc-500"
+                                  }`}
+                                >
+                                  #{ch.yourRank}
                                 </span>
                               </div>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-[10px] text-zinc-500 uppercase">You</p>
-                              <span
-                                className={`text-lg font-black ${
-                                  ch.yourRank === 1
-                                    ? "text-amber-400"
-                                    : ch.yourRank <= 3
-                                    ? "text-zinc-300"
-                                    : "text-zinc-500"
-                                }`}
-                              >
-                                #{ch.yourRank}
-                              </span>
-                            </div>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -379,4 +393,15 @@ function EmptyState({
       {action && <Button>{action}</Button>}
     </div>
   );
+}
+
+function getTimeLeft(endDateStr: string): string {
+  const end = new Date(endDateStr).getTime();
+  const now = Date.now();
+  const diff = end - now;
+  if (diff <= 0) return "Ending";
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h`;
 }

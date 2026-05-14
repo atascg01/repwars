@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +24,20 @@ import {
   Minus,
   Crown,
   Share2,
+  Loader2,
 } from "lucide-react";
 
-const challengeTypeMeta = {
+// ── Type metadata ──
+
+const challengeTypeMeta: Record<string, {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+  unit: string;
+  desc: string;
+}> = {
   IRON_KING: {
     icon: Weight,
     label: "Iron King",
@@ -73,41 +85,96 @@ const challengeTypeMeta = {
   },
 };
 
-const challenge = {
-  id: "c1",
-  crewName: "Iron Brotherhood",
-  crewId: "1",
-  type: "IRON_KING" as const,
-  title: "Iron King — Week 20",
-  description: "Who lifts the most this week? Total volume across all exercises. Every rep counts.",
-  startDate: "2026-05-11",
-  endDate: "2026-05-17",
-  status: "active",
-  participants: 12,
-  leaderboard: [
-    { rank: 1, trend: "up", name: "Andress", initials: "AN", score: 84200, change: 5200, workouts: 4 },
-    { rank: 2, trend: "down", name: "María", initials: "MA", score: 76100, change: -3100, workouts: 5 },
-    { rank: 3, trend: "up", name: "Carlos", initials: "CR", score: 58900, change: 12000, workouts: 3 },
-    { rank: 4, trend: "same", name: "Pablo", initials: "PB", score: 45200, change: 0, workouts: 3 },
-    { rank: 5, trend: "up", name: "Diego", initials: "DG", score: 31200, change: 8900, workouts: 2 },
-    { rank: 6, trend: "down", name: "Laura", initials: "LA", score: 18700, change: -2100, workouts: 2 },
-    { rank: 7, trend: "same", name: "Sofía", initials: "SF", score: 15400, change: 0, workouts: 1 },
-    { rank: 8, trend: "new", name: "Javier", initials: "JV", score: 12200, change: null, workouts: 2 },
-    { rank: 9, trend: "same", name: "Ana", initials: "AA", score: 8100, change: 0, workouts: 1 },
-    { rank: 10, trend: "down", name: "Miguel", initials: "MG", score: 5400, change: -800, workouts: 1 },
-    { rank: 11, trend: "same", name: "Elena", initials: "EL", score: 3200, change: 0, workouts: 1 },
-    { rank: 12, trend: "new", name: "Tomás", initials: "TM", score: 1800, change: null, workouts: 1 },
-  ],
-};
+interface LeaderboardEntry {
+  rank: number | null;
+  name: string;
+  initials: string;
+  score: number;
+  workouts: number;
+  avatar: string | null;
+  isMe: boolean;
+}
 
-export default function ChallengeDetailPage() {
+interface ChallengeDetail {
+  id: string;
+  crewId: string;
+  crewName: string;
+  type: string;
+  title: string;
+  description: string | null;
+  startDate: string;
+  endDate: string;
+  status: string;
+  participants: number;
+  leaderboard: LeaderboardEntry[];
+}
+
+// ── Page ──
+
+export default function ChallengeDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchChallenge = async () => {
+      try {
+        const res = await fetch(`/api/challenges/${id}`);
+        if (!res.ok) {
+          const data = await res.json();
+          setError(data.error ?? "Failed to load challenge");
+          return;
+        }
+        const data = await res.json();
+        setChallenge(data);
+      } catch (err) {
+        setError("Network error");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchChallenge();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="flex-1 p-4 md:p-8 flex justify-center items-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+      </main>
+    );
+  }
+
+  if (error || !challenge) {
+    return (
+      <main className="flex-1 p-4 md:p-8 max-w-4xl mx-auto w-full space-y-8">
+        <Link
+          href="/dashboard/challenges"
+          className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Challenges
+        </Link>
+        <div className="rounded-xl border border-zinc-800 p-12 text-center">
+          <p className="text-zinc-500 text-lg">{error || "Challenge not found"}</p>
+        </div>
+      </main>
+    );
+  }
+
   const meta = challengeTypeMeta[challenge.type];
+  if (!meta) return null;
   const Icon = meta.icon;
   const podium = challenge.leaderboard.slice(0, 3);
+  const timeLeft = getTimeLeft(challenge.endDate);
+  const isActive = challenge.status === "ACTIVE" || challenge.status === "UPCOMING";
 
   return (
     <main className="flex-1 p-4 md:p-8 max-w-4xl mx-auto w-full space-y-8">
-      {/* Back */}
       <Link
         href="/dashboard/challenges"
         className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -120,9 +187,7 @@ export default function ChallengeDetailPage() {
       <div className="space-y-4">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <div
-              className={`h-16 w-16 rounded-2xl ${meta.bg} flex items-center justify-center shrink-0`}
-            >
+            <div className={`h-16 w-16 rounded-2xl ${meta.bg} flex items-center justify-center shrink-0`}>
               <Icon className={`h-8 w-8 ${meta.color}`} />
             </div>
             <div>
@@ -130,14 +195,26 @@ export default function ChallengeDetailPage() {
                 <Badge className={`${meta.bg} ${meta.color} border-0`}>
                   {meta.label}
                 </Badge>
-                <Badge className="bg-amber-500/20 text-amber-400 border-0 animate-pulse">
-                  Live
-                </Badge>
+                {isActive && (
+                  <Badge className="bg-amber-500/20 text-amber-400 border-0 animate-pulse">
+                    Live
+                  </Badge>
+                )}
+                {challenge.status === "COMPLETED" && (
+                  <Badge className="bg-zinc-700 text-zinc-400 border-0">
+                    Completed
+                  </Badge>
+                )}
               </div>
               <h1 className="text-3xl font-bold tracking-tight mt-1.5">
                 {challenge.title}
               </h1>
-              <p className="text-zinc-500 mt-1 max-w-lg">{challenge.description}</p>
+              <p className="text-zinc-500 mt-1 max-w-lg">
+                {challenge.description ?? "No description"}
+              </p>
+              <p className="text-xs text-zinc-600 mt-2">
+                {challenge.crewName}
+              </p>
             </div>
           </div>
           <Button variant="outline" size="sm" className="gap-2">
@@ -155,9 +232,9 @@ export default function ChallengeDetailPage() {
           />
           <StatBadge
             icon={<Clock className="h-4 w-4" />}
-            label="Ends In"
-            value="3d 14h"
-            highlight
+            label={isActive ? "Ends In" : "Ended"}
+            value={timeLeft}
+            highlight={isActive}
           />
           <StatBadge
             icon={<Users className="h-4 w-4" />}
@@ -172,44 +249,48 @@ export default function ChallengeDetailPage() {
         </div>
       </div>
 
-      {/* Podium */}
-      <div className="relative">
-        <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
-        <div className="flex items-end justify-center gap-3 sm:gap-6 px-4 pt-8 pb-4">
-          {/* 2nd Place */}
-          <PodiumSpot
-            rank={2}
-            participant={podium[1]}
-            height="h-28 sm:h-36"
-            color="bg-zinc-400"
-            textColor="text-zinc-300"
-            delay="delay-100"
-          />
-
-          {/* 1st Place */}
-          <PodiumSpot
-            rank={1}
-            participant={podium[0]}
-            height="h-36 sm:h-44"
-            color="bg-amber-500"
-            textColor="text-amber-300"
-            delay="delay-0"
-            isWinner
-          />
-
-          {/* 3rd Place */}
-          <PodiumSpot
-            rank={3}
-            participant={podium[2]}
-            height="h-24 sm:h-28"
-            color="bg-amber-800"
-            textColor="text-amber-500"
-            delay="delay-200"
-          />
-        </div>
-      </div>
-
-      <Separator className="bg-zinc-800" />
+      {/* Podium (for active challenges) */}
+      {isActive && podium.length >= 3 && (
+        <>
+          <div className="relative">
+            <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+            <div className="flex items-end justify-center gap-3 sm:gap-6 px-4 pt-8 pb-4">
+              {podium[1] && (
+                <PodiumSpot
+                  rank={2}
+                  participant={podium[1]}
+                  height="h-28 sm:h-36"
+                  color="bg-zinc-400"
+                  textColor="text-zinc-300"
+                  delay="delay-100"
+                />
+              )}
+              {podium[0] && (
+                <PodiumSpot
+                  rank={1}
+                  participant={podium[0]}
+                  height="h-36 sm:h-44"
+                  color="bg-amber-500"
+                  textColor="text-amber-300"
+                  delay="delay-0"
+                  isWinner
+                />
+              )}
+              {podium[2] && (
+                <PodiumSpot
+                  rank={3}
+                  participant={podium[2]}
+                  height="h-24 sm:h-28"
+                  color="bg-amber-800"
+                  textColor="text-amber-500"
+                  delay="delay-200"
+                />
+              )}
+            </div>
+          </div>
+          <Separator className="bg-zinc-800" />
+        </>
+      )}
 
       {/* Full Leaderboard */}
       <div>
@@ -219,43 +300,23 @@ export default function ChallengeDetailPage() {
         </h2>
 
         <Card className="border-zinc-800 bg-zinc-900/50 overflow-hidden">
-          {/* Table Header */}
-          <div className="grid grid-cols-[auto_1fr_auto_auto] gap-4 px-5 py-3 text-xs text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900">
+          <div className="grid grid-cols-[auto_1fr_auto] gap-4 px-5 py-3 text-xs text-zinc-500 uppercase tracking-wider border-b border-zinc-800 bg-zinc-900">
             <span className="w-8 text-center">#</span>
             <span>Athlete</span>
-            <span className="text-right w-24">{meta.unit}</span>
-            <span className="text-right w-16">Trend</span>
+            <span className="text-right w-32">{meta.unit}</span>
           </div>
 
-          {/* Rows */}
           <div className="divide-y divide-zinc-800">
             {challenge.leaderboard.map((p, i) => {
-              const isMe = p.name === "Andress";
-              const trendIcon =
-                p.trend === "up" ? (
-                  <ChevronUp className="h-3 w-3 text-emerald-400" />
-                ) : p.trend === "down" ? (
-                  <ChevronDown className="h-3 w-3 text-red-400" />
-                ) : (
-                  <Minus className="h-3 w-3 text-zinc-600" />
-                );
-              const trendColor =
-                p.trend === "up"
-                  ? "text-emerald-400"
-                  : p.trend === "down"
-                  ? "text-red-400"
-                  : "text-zinc-600";
-
               return (
                 <div
                   key={p.name}
-                  className={`grid grid-cols-[auto_1fr_auto_auto] gap-4 px-5 py-3.5 items-center transition-colors ${
-                    isMe
+                  className={`grid grid-cols-[auto_1fr_auto] gap-4 px-5 py-3.5 items-center transition-colors ${
+                    p.isMe
                       ? "bg-amber-500/5 border-l-2 border-l-amber-500"
                       : "hover:bg-zinc-900/50"
                   }`}
                 >
-                  {/* Rank */}
                   <span
                     className={`w-8 text-center font-bold text-sm ${
                       p.rank === 1
@@ -267,15 +328,14 @@ export default function ChallengeDetailPage() {
                         : "text-zinc-500"
                     }`}
                   >
-                    {p.rank === 1 ? "👑" : p.rank}
+                    {p.rank === 1 ? "👑" : p.rank ?? "-"}
                   </span>
 
-                  {/* Athlete */}
                   <div className="flex items-center gap-3 min-w-0">
                     <Avatar className="h-8 w-8 shrink-0">
                       <AvatarFallback
                         className={`text-xs font-semibold ${
-                          isMe
+                          p.isMe
                             ? "bg-amber-500/20 text-amber-400"
                             : "bg-zinc-800 text-zinc-400"
                         }`}
@@ -287,12 +347,12 @@ export default function ChallengeDetailPage() {
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`text-sm font-semibold truncate ${
-                            isMe ? "text-amber-400" : "text-white"
+                            p.isMe ? "text-amber-400" : "text-white"
                           }`}
                         >
                           {p.name}
                         </span>
-                        {isMe && (
+                        {p.isMe && (
                           <span className="text-[10px] text-zinc-600">(you)</span>
                         )}
                       </div>
@@ -302,7 +362,6 @@ export default function ChallengeDetailPage() {
                     </div>
                   </div>
 
-                  {/* Score */}
                   <div className="text-right">
                     <span className="text-sm font-bold tabular-nums">
                       {p.score.toLocaleString()}
@@ -311,53 +370,12 @@ export default function ChallengeDetailPage() {
                       {meta.unit}
                     </span>
                   </div>
-
-                  {/* Trend */}
-                  <div className="flex items-center justify-end gap-1 w-16">
-                    <span
-                      className={`flex items-center gap-0.5 text-xs font-medium tabular-nums ${trendColor}`}
-                    >
-                      {p.change !== null && p.change !== 0
-                        ? `${p.change > 0 ? "+" : ""}${p.change.toLocaleString()}`
-                        : p.trend === "new"
-                        ? "NEW"
-                        : "—"}
-                    </span>
-                    {p.trend !== "new" && trendIcon}
-                  </div>
                 </div>
               );
             })}
           </div>
         </Card>
       </div>
-
-      {/* My Stats Card */}
-      <Card className="border-amber-500/30 bg-gradient-to-r from-amber-500/5 to-transparent">
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-amber-500/20 text-amber-400 font-bold">
-                  AN
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-bold">My Progress</p>
-                <p className="text-sm text-zinc-500">
-                  You're ranked #1 with 4 workouts this week
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-black text-amber-400 tabular-nums">
-                84,200
-              </p>
-              <p className="text-xs text-zinc-500">total kg</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </main>
   );
 }
@@ -372,7 +390,7 @@ function PodiumSpot({
   isWinner,
 }: {
   rank: number;
-  participant: (typeof challenge.leaderboard)[0];
+  participant: LeaderboardEntry;
   height: string;
   color: string;
   textColor: string;
@@ -381,7 +399,6 @@ function PodiumSpot({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 animate-in slide-in-from-bottom-4 fade-in duration-500">
-      {/* Avatar */}
       <div className="relative">
         {isWinner && (
           <Crown className="absolute -top-5 left-1/2 -translate-x-1/2 h-5 w-5 text-amber-400 animate-bounce" />
@@ -392,13 +409,9 @@ function PodiumSpot({
           </AvatarFallback>
         </Avatar>
       </div>
-
-      {/* Name */}
       <span className="text-sm font-semibold text-center leading-tight">
         {participant.name}
       </span>
-
-      {/* Score on podium */}
       <div
         className={`${height} w-20 sm:w-24 ${color} rounded-t-lg flex flex-col items-center justify-end pb-3 transition-all duration-700 ${delay}`}
       >
@@ -409,8 +422,6 @@ function PodiumSpot({
           {participant.workouts} workouts
         </span>
       </div>
-
-      {/* Rank badge */}
       <div
         className={`h-8 w-8 rounded-full ${color} flex items-center justify-center text-black font-black text-sm -mt-4 ring-4 ring-zinc-950 z-10`}
       >
@@ -446,4 +457,15 @@ function StatBadge({
       </div>
     </div>
   );
+}
+
+function getTimeLeft(endDateStr: string): string {
+  const end = new Date(endDateStr).getTime();
+  const now = Date.now();
+  const diff = end - now;
+  if (diff <= 0) return "Ended";
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h`;
 }

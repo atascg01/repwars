@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
   Users,
@@ -20,106 +19,160 @@ import {
   Dumbbell,
   Flame,
   Medal,
-  TrendingUp,
   Calendar,
   Crown,
+  Loader2,
+  Globe,
+  Lock,
+  Shield,
 } from "lucide-react";
 
-// Mock crew data
-const crew = {
-  id: "1",
-  name: "Iron Brotherhood",
-  description: "Push, pull, legs. Every day. No excuses.",
-  privacy: "invite_only",
-  memberCount: 12,
-  inviteCode: "XK9M2P",
-  myRole: "OWNER",
-  createdAt: "2025-11-15",
+// ── Types ──
+
+interface FeedItem {
+  id: string;
+  type: "workout" | "pr" | "challenge_join" | "badge";
+  user: { name: string; avatar: string | null; initials: string };
+  workout?: string;
+  volume?: number;
+  prs?: number;
+  exercise?: string;
+  old?: string;
+  new?: string;
+  badge?: string;
+  badgeIcon?: string;
+  challenge?: string;
+  time: string;
+}
+
+interface Member {
+  name: string;
+  initials: string;
+  role: string;
+  streak: number;
+  volume: number;
+  workouts: number;
+  avatar: string | null;
+}
+
+interface LeaderboardEntry {
+  rank: number | null;
+  name: string;
+  initials: string;
+  score: number;
+}
+
+interface ActiveChallenge {
+  id: string;
+  type: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  leaderboard: LeaderboardEntry[];
+}
+
+interface PastChallenge {
+  id: string;
+  title: string;
+  type: string;
+  winner: { name: string; initials: string } | null;
+  participants: number;
+  endedAt: string;
+}
+
+interface CrewDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  avatar: string | null;
+  privacy: string;
+  inviteCode: string;
+  memberCount: number;
+  myRole: string;
+  createdAt: string;
+  members: Member[];
+  activeChallenge: ActiveChallenge | null;
+  pastChallenges: PastChallenge[];
+  feed: FeedItem[];
+}
+
+// ── Challenge type metadata ──
+
+const challengeTypeMeta: Record<string, { bg: string; color: string }> = {
+  IRON_KING: { bg: "bg-amber-500/10", color: "text-amber-400" },
+  CONSISTENCY: { bg: "bg-emerald-500/10", color: "text-emerald-400" },
+  PR_BREAKER: { bg: "bg-violet-500/10", color: "text-violet-400" },
+  GRINDER: { bg: "bg-red-500/10", color: "text-red-400" },
+  CUSTOM: { bg: "bg-sky-500/10", color: "text-sky-400" },
 };
 
-const mockFeed = [
-  {
-    id: "1",
-    type: "workout",
-    user: { name: "Andress", avatar: null, initials: "AN" },
-    workout: "Pecho, Hombro, Triceps",
-    volume: 12450,
-    prs: 2,
-    time: "2h ago",
-  },
-  {
-    id: "2",
-    type: "pr",
-    user: { name: "Carlos", avatar: null, initials: "CR" },
-    exercise: "Bench Press",
-    old: "90kg x 5",
-    new: "92.5kg x 5",
-    time: "5h ago",
-  },
-  {
-    id: "3",
-    type: "challenge_join",
-    user: { name: "María", avatar: null, initials: "MA" },
-    challenge: "Iron King — Week 20",
-    time: "8h ago",
-  },
-  {
-    id: "4",
-    type: "workout",
-    user: { name: "Diego", avatar: null, initials: "DG" },
-    workout: "Biceps/Espalda",
-    volume: 9800,
-    prs: 1,
-    time: "12h ago",
-  },
-  {
-    id: "5",
-    type: "badge",
-    user: { name: "Andress", avatar: null, initials: "AN" },
-    badge: "Monthly Grinder",
-    badgeIcon: "🔥🔥",
-    time: "1d ago",
-  },
-];
-
-const mockMembers = [
-  { name: "Andress", initials: "AN", role: "OWNER", streak: 14, volume: 284000, workouts: 87 },
-  { name: "Carlos", initials: "CR", role: "ADMIN", streak: 8, volume: 156000, workouts: 52 },
-  { name: "María", initials: "MA", role: "MEMBER", streak: 21, volume: 192000, workouts: 64 },
-  { name: "Diego", initials: "DG", role: "MEMBER", streak: 5, volume: 89000, workouts: 31 },
-  { name: "Laura", initials: "LA", role: "MEMBER", streak: 3, volume: 45000, workouts: 18 },
-  { name: "Pablo", initials: "PB", role: "MEMBER", streak: 12, volume: 210000, workouts: 71 },
-];
-
-const activeChallenge = {
-  id: "c1",
-  type: "IRON_KING",
-  title: "Iron King — Week 20",
-  startDate: "2026-05-11",
-  endDate: "2026-05-17",
-  leaderboard: [
-    { rank: 1, name: "Andress", initials: "AN", score: 84200 },
-    { rank: 2, name: "María", initials: "MA", score: 76100 },
-    { rank: 3, name: "Carlos", initials: "CR", score: 58900 },
-    { rank: 4, name: "Pablo", initials: "PB", score: 45200 },
-    { rank: 5, name: "Diego", initials: "DG", score: 31200 },
-    { rank: 6, name: "Laura", initials: "LA", score: 18700 },
-  ],
+const privacyIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  PUBLIC: Globe,
+  INVITE_ONLY: Lock,
+  PRIVATE: Shield,
 };
 
-const pastChallenges = [
-  {
-    id: "c0",
-    title: "PR Breaker — Week 19",
-    type: "PR_BREAKER",
-    winner: { name: "María", initials: "MA" },
-    endedAt: "2026-05-10",
-    participants: 10,
-  },
-];
+// ── Page ──
 
-export default function CrewPage() {
+export default function CrewPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [crew, setCrew] = useState<CrewDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("feed");
+
+  useEffect(() => {
+    const fetchCrew = async () => {
+      try {
+        const res = await fetch(`/api/crews/${id}`);
+        if (!res.ok) {
+          const data = await res.json();
+          setError(data.error ?? "Failed to load crew");
+          return;
+        }
+        const data = await res.json();
+        setCrew(data);
+      } catch (err) {
+        setError("Network error");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCrew();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="flex-1 p-4 md:p-8 flex justify-center items-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+      </main>
+    );
+  }
+
+  if (error || !crew) {
+    return (
+      <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-6">
+        <Link
+          href="/dashboard/crews"
+          className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Crews
+        </Link>
+        <div className="rounded-xl border border-zinc-800 p-12 text-center">
+          <p className="text-zinc-500 text-lg">{error || "Crew not found"}</p>
+        </div>
+      </main>
+    );
+  }
+
+  const maxVolume = crew.members.length
+    ? Math.max(...crew.members.map((m) => m.volume), 1)
+    : 1;
 
   return (
     <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-6">
@@ -140,7 +193,9 @@ export default function CrewPage() {
             </div>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-3xl font-bold tracking-tight">{crew.name}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">
+                  {crew.name}
+                </h1>
                 <Badge variant="secondary" className="gap-1.5">
                   <Users className="h-3 w-3" />
                   {crew.memberCount}
@@ -152,12 +207,19 @@ export default function CrewPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-zinc-500 mt-1.5">{crew.description}</p>
+              <p className="text-zinc-500 mt-1.5">
+                {crew.description ?? "No description"}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => navigator.clipboard.writeText(crew.inviteCode)}
+            >
               <Share2 className="h-4 w-4" />
               Invite
             </Button>
@@ -169,8 +231,8 @@ export default function CrewPage() {
       </div>
 
       {/* Active Challenge Banner */}
-      {activeChallenge && (
-        <Link href={`/dashboard/challenges/${activeChallenge.id}`}>
+      {crew.activeChallenge && (
+        <Link href={`/dashboard/challenges/${crew.activeChallenge.id}`}>
           <Card className="border-amber-500/30 bg-gradient-to-r from-amber-500/5 to-orange-500/5 hover:border-amber-500/50 transition-all cursor-pointer overflow-hidden relative">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-full" />
             <CardContent className="p-5">
@@ -180,20 +242,31 @@ export default function CrewPage() {
                     <Swords className="h-3 w-3" />
                     Live Challenge
                   </Badge>
-                  <h2 className="text-xl font-bold mt-2">{activeChallenge.title}</h2>
+                  <h2 className="text-xl font-bold mt-2">
+                    {crew.activeChallenge.title}
+                  </h2>
                   <p className="text-sm text-zinc-500">
                     <Calendar className="h-3.5 w-3.5 inline mr-1" />
-                    Ends Sunday, May 17
-                    {" · "}
-                    <Trophy className="h-3.5 w-3.5 inline mr-1" />
-                    {activeChallenge.leaderboard[0]?.name} leads with{" "}
-                    {activeChallenge.leaderboard[0]?.score.toLocaleString()} kg
+                    Ends{" "}
+                    {new Date(crew.activeChallenge.endDate).toLocaleDateString(
+                      "en-US",
+                      { weekday: "short", month: "short", day: "numeric" }
+                    )}
+                    {crew.activeChallenge.leaderboard[0] && (
+                      <>
+                        {" · "}
+                        <Trophy className="h-3.5 w-3.5 inline mr-1" />
+                        {crew.activeChallenge.leaderboard[0].name} leads with{" "}
+                        {crew.activeChallenge.leaderboard[0].score.toLocaleString()}{" "}
+                        kg
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="hidden sm:flex items-center gap-1">
-                  {activeChallenge.leaderboard.slice(0, 3).map((p, i) => (
+                  {crew.activeChallenge.leaderboard.slice(0, 3).map((p, i) => (
                     <div
-                      key={p.rank}
+                      key={p.name}
                       className="flex flex-col items-center gap-1 w-20"
                     >
                       <div
@@ -238,83 +311,99 @@ export default function CrewPage() {
 
         {/* Feed Tab */}
         <TabsContent value="feed" className="mt-6">
-          <div className="space-y-3">
-            {mockFeed.map((item) => (
-              <div
-                key={item.id}
-                className="flex gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-900/50"
-              >
-                <Avatar className="h-10 w-10 shrink-0">
-                  <AvatarImage src={item.user.avatar ?? undefined} />
-                  <AvatarFallback className="bg-zinc-800 text-zinc-400 text-xs">
-                    {item.user.initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm">{item.user.name}</span>
-                    <span className="text-xs text-zinc-500">{item.time}</span>
-                  </div>
-                  {item.type === "workout" && (
-                    <div className="mt-1 space-y-1">
-                      <p className="text-sm">
-                        Logged{" "}
-                        <span className="font-medium text-white">
-                          {item.workout}
+          {crew.feed.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 p-12 text-center">
+              <Flame className="h-8 w-8 mx-auto text-zinc-600 mb-3" />
+              <p className="text-sm text-zinc-500">
+                No activity yet. Start working out!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {crew.feed.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-900/50"
+                >
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={item.user.avatar ?? undefined} />
+                    <AvatarFallback className="bg-zinc-800 text-zinc-400 text-xs">
+                      {item.user.initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">
+                        {item.user.name}
+                      </span>
+                      <span className="text-xs text-zinc-500">{item.time}</span>
+                    </div>
+                    {item.type === "workout" && (
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm">
+                          Logged{" "}
+                          <span className="font-medium text-white">
+                            {item.workout}
+                          </span>
+                        </p>
+                        <div className="flex items-center gap-3 text-xs text-zinc-500">
+                          <span className="flex items-center gap-1">
+                            <Dumbbell className="h-3 w-3" />
+                            {(item.volume ?? 0).toLocaleString()} kg
+                          </span>
+                          {(item.prs ?? 0) > 0 && (
+                            <span className="flex items-center gap-1 text-amber-400">
+                              <Trophy className="h-3 w-3" />
+                              {item.prs} PR{(item.prs ?? 0) > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {item.type === "pr" && (
+                      <p className="text-sm mt-1">
+                        Broke PR on{" "}
+                        <span className="font-medium text-amber-400">
+                          {item.exercise}
+                        </span>
+                        :{" "}
+                        <span className="text-zinc-400 line-through">
+                          {item.old}
+                        </span>{" "}
+                        →{" "}
+                        <span className="text-white font-semibold">
+                          {item.new}
                         </span>
                       </p>
-                      <div className="flex items-center gap-3 text-xs text-zinc-500">
-                        <span className="flex items-center gap-1">
-                          <Dumbbell className="h-3 w-3" />
-                          {(item.volume ?? 0).toLocaleString()} kg
+                    )}
+                    {item.type === "challenge_join" && (
+                      <p className="text-sm mt-1">
+                        Joined{" "}
+                        <span className="font-medium text-amber-400">
+                          {item.challenge}
                         </span>
-                        {(item.prs ?? 0) > 0 && (
-                          <span className="flex items-center gap-1 text-amber-400">
-                            <Trophy className="h-3 w-3" />
-                            {item.prs} PR{(item.prs ?? 0) > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {item.type === "pr" && (
-                    <p className="text-sm mt-1">
-                      Broke PR on{" "}
-                      <span className="font-medium text-amber-400">
-                        {item.exercise}
-                      </span>
-                      :{" "}
-                      <span className="text-zinc-400 line-through">{item.old}</span>{" "}
-                      → <span className="text-white font-semibold">{item.new}</span>
-                    </p>
-                  )}
-                  {item.type === "challenge_join" && (
-                    <p className="text-sm mt-1">
-                      Joined{" "}
-                      <span className="font-medium text-amber-400">
-                        {item.challenge}
-                      </span>
-                    </p>
-                  )}
-                  {item.type === "badge" && (
-                    <p className="text-sm mt-1">
-                      Earned{" "}
-                      <span className="font-medium text-white">
-                        {item.badgeIcon} {item.badge}
-                      </span>{" "}
-                      badge
-                    </p>
-                  )}
+                      </p>
+                    )}
+                    {item.type === "badge" && (
+                      <p className="text-sm mt-1">
+                        Earned{" "}
+                        <span className="font-medium text-white">
+                          {item.badgeIcon} {item.badge}
+                        </span>{" "}
+                        badge
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* Members Tab */}
         <TabsContent value="members" className="mt-6">
           <div className="space-y-2">
-            {mockMembers.map((member, i) => (
+            {crew.members.map((member, i) => (
               <div
                 key={member.name}
                 className="flex items-center gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-all"
@@ -323,15 +412,26 @@ export default function CrewPage() {
                   {i + 1}
                 </span>
                 <Avatar className="h-10 w-10">
+                  <AvatarImage src={member.avatar ?? undefined} />
                   <AvatarFallback className="bg-zinc-800 text-zinc-400 text-xs font-semibold">
                     {member.initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{member.name}</span>
+                    <span className="font-semibold text-sm">
+                      {member.name}
+                    </span>
                     {member.role === "OWNER" && (
                       <Crown className="h-3 w-3 text-amber-400" />
+                    )}
+                    {member.role === "ADMIN" && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] h-4 px-1"
+                      >
+                        ADMIN
+                      </Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-zinc-500 mt-0.5">
@@ -339,7 +439,9 @@ export default function CrewPage() {
                       <Flame className="h-3 w-3 text-orange-400" />
                       {member.streak} day streak
                     </span>
-                    <span>{member.volume.toLocaleString()} kg lifetime</span>
+                    <span>
+                      {member.volume.toLocaleString()} kg lifetime
+                    </span>
                     <span>{member.workouts} workouts</span>
                   </div>
                 </div>
@@ -348,7 +450,7 @@ export default function CrewPage() {
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500"
                       style={{
-                        width: `${(member.volume / 284000) * 100}%`,
+                        width: `${(member.volume / maxVolume) * 100}%`,
                       }}
                     />
                   </div>
@@ -365,8 +467,10 @@ export default function CrewPage() {
             <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
               Active
             </h3>
-            {activeChallenge ? (
-              <Link href={`/dashboard/challenges/${activeChallenge.id}`}>
+            {crew.activeChallenge ? (
+              <Link
+                href={`/dashboard/challenges/${crew.activeChallenge.id}`}
+              >
                 <Card className="border-amber-500/30 bg-zinc-900/50 hover:border-amber-500/50 transition-all cursor-pointer">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
@@ -375,9 +479,18 @@ export default function CrewPage() {
                           <Swords className="h-5 w-5 text-amber-400" />
                         </div>
                         <div>
-                          <h3 className="font-bold">{activeChallenge.title}</h3>
+                          <h3 className="font-bold">
+                            {crew.activeChallenge.title}
+                          </h3>
                           <p className="text-xs text-zinc-500">
-                            {activeChallenge.leaderboard.length} participants · Ends May 17
+                            {crew.activeChallenge.leaderboard.length}{" "}
+                            participants · Ends{" "}
+                            {new Date(
+                              crew.activeChallenge.endDate
+                            ).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
                           </p>
                         </div>
                       </div>
@@ -406,42 +519,56 @@ export default function CrewPage() {
             <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
               Past Challenges
             </h3>
-            <div className="space-y-2">
-              {pastChallenges.map((ch) => (
-                <Link key={ch.id} href={`/dashboard/challenges/${ch.id}`}>
-                  <Card className="border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-all cursor-pointer">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-xl bg-zinc-800 flex items-center justify-center">
-                            <Trophy className="h-5 w-5 text-zinc-400" />
+            {crew.pastChallenges.length === 0 ? (
+              <p className="text-sm text-zinc-500 text-center py-4">
+                No completed challenges yet
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {crew.pastChallenges.map((ch) => (
+                  <Link key={ch.id} href={`/dashboard/challenges/${ch.id}`}>
+                    <Card className="border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-all cursor-pointer">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-zinc-800 flex items-center justify-center">
+                              <Trophy className="h-5 w-5 text-zinc-400" />
+                            </div>
+                            <div>
+                              <h3 className="font-bold">{ch.title}</h3>
+                              <p className="text-xs text-zinc-500">
+                                {ch.participants} participants · Ended{" "}
+                                {new Date(ch.endedAt).toLocaleDateString(
+                                  "en-US",
+                                  { month: "short", day: "numeric" }
+                                )}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold">{ch.title}</h3>
-                            <p className="text-xs text-zinc-500">
-                              {ch.participants} participants · Ended {ch.endedAt}
-                            </p>
-                          </div>
+                          {ch.winner && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-zinc-500">
+                                Winner:
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
+                                    {ch.winner.initials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm font-medium text-amber-400">
+                                  {ch.winner.name}
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-zinc-500">Winner:</span>
-                          <div className="flex items-center gap-1.5">
-                            <Avatar className="h-6 w-6">
-                              <AvatarFallback className="bg-amber-500/20 text-amber-400 text-[10px]">
-                                {ch.winner.initials}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm font-medium text-amber-400">
-                              {ch.winner.name}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

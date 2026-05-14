@@ -188,7 +188,7 @@ export default function ImportPage() {
                       </label>
                       <Input
                         type="password"
-                        placeholder="hv_..."
+                        placeholder="Paste your Hevy API key..."
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
                         className="mt-1.5 font-mono"
@@ -212,7 +212,7 @@ export default function ImportPage() {
 
                     <Button
                       onClick={handleSaveApiKey}
-                      disabled={!apiKey.startsWith("hv_")}
+                      disabled={apiKey.length < 10}
                       className="w-full gap-2"
                     >
                       <Zap className="h-4 w-4" />

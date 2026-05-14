@@ -23,24 +23,22 @@ export async function GET() {
     orderBy: { joinedAt: "desc" },
   });
 
-  const result = memberships.map((membership) => {
-    return {
-      id: membership.crew.id,
-      name: membership.crew.name,
-      description: membership.crew.description,
-      avatar: membership.crew.avatar,
-      privacy: membership.crew.privacy,
-      inviteCode: membership.crew.inviteCode,
-      ownerId: membership.crew.ownerId,
-      createdAt: membership.crew.createdAt,
-      updatedAt: membership.crew.updatedAt,
-      memberCount: membership.crew._count.members,
-      myRole: membership.role,
-      owner: membership.crew.owner,
-    };
-  });
+  const crews = [];
+  for (const m of memberships) {
+    crews.push({
+      id: m.crew.id,
+      name: m.crew.name,
+      description: m.crew.description,
+      avatar: m.crew.avatar,
+      privacy: m.crew.privacy,
+      inviteCode: m.crew.inviteCode,
+      memberCount: m.crew._count.members,
+      myRole: m.role,
+      owner: m.crew.owner,
+    });
+  }
 
-  return NextResponse.json({ crews: result });
+  return NextResponse.json({ crews });
 }
 
 /** POST /api/crews — Create a new crew */

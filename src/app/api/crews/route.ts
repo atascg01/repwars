@@ -23,13 +23,24 @@ export async function GET() {
     orderBy: { joinedAt: "desc" },
   });
 
-  return NextResponse.json({
-    crews: memberships.map((m) => ({
-      ...m.crew,
-      memberCount: m.crew._count.members,
-      myRole: m.role,
-    })),
+  const result = memberships.map((membership) => {
+    return {
+      id: membership.crew.id,
+      name: membership.crew.name,
+      description: membership.crew.description,
+      avatar: membership.crew.avatar,
+      privacy: membership.crew.privacy,
+      inviteCode: membership.crew.inviteCode,
+      ownerId: membership.crew.ownerId,
+      createdAt: membership.crew.createdAt,
+      updatedAt: membership.crew.updatedAt,
+      memberCount: membership.crew._count.members,
+      myRole: membership.role,
+      owner: membership.crew.owner,
+    };
   });
+
+  return NextResponse.json({ crews: result });
 }
 
 /** POST /api/crews — Create a new crew */

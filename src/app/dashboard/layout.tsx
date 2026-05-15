@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calcWeeklyStreak } from "@/lib/streaks";
+import { Providers } from "@/app/providers";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { DashboardNav } from "@/components/layout/dashboard-nav";
 import { DataWarningBanner } from "@/components/onboarding/data-warning-banner";
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
@@ -38,11 +40,13 @@ export default async function DashboardLayout({
   }
 
   return (
-    <>
-      <DashboardNav streak={streak} />
-      <DataWarningBanner show={!hasData} />
-      <OnboardingModal show={!hasData} />
-      {children}
-    </>
+    <Providers>
+      <TooltipProvider>
+        <DashboardNav streak={streak} />
+        <DataWarningBanner show={!hasData} />
+        <OnboardingModal show={!hasData} />
+        {children}
+      </TooltipProvider>
+    </Providers>
   );
 }

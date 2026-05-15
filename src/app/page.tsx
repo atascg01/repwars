@@ -460,7 +460,7 @@ export default function LandingPage() {
                 Terms
               </a>
               <a
-                href="https://github.com"
+                href="https://github.com/atascg01/repwars"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-zinc-400 transition-colors"

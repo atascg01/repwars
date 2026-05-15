@@ -1,43 +1,76 @@
 /**
- * Calculate streak-related metrics from a set of training day strings.
- * Pure function — no DB dependencies, fully testable.
+ * Streak metrics for lifters — weekly-based, not daily.
+ * Rest days are expected (3-4 days/week is normal).
+ *
+ * Pure functions — no DB dependencies, fully testable.
  *
  * @param trainingDays - Set of date strings in YYYY-MM-DD format
  * @param today - Today's date string (injectable for testing)
  */
 
-export function calcCurrentStreak(
+/** Get Monday 00:00 of the week containing the given date */
+function getMonday(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Count how many training days fall within a given Mon-Sun week */
+function countDaysInWeek(
   trainingDays: Set<string>,
+  monday: Date,
+): number {
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 7);
+  let count = 0;
+  for (const dayStr of trainingDays) {
+    const d = new Date(dayStr + "T12:00:00");
+    if (d >= monday && d < sunday) count++;
+  }
+  return count;
+}
+
+/**
+ * Current weekly streak: consecutive weeks (Mon-Sun) with ≥ minDays trained.
+ * minDays defaults to 3 (a normal lifting schedule).
+ */
+export function calcWeeklyStreak(
+  trainingDays: Set<string>,
+  minDays = 3,
   today?: string,
 ): number {
-  const dayStr = today ?? new Date().toISOString().slice(0, 10);
-  const todayMs = new Date(dayStr + "T12:00:00").getTime();
-  const yesterdayMs = todayMs - 86400000;
-  const yesterday = new Date(yesterdayMs).toISOString().slice(0, 10);
-
-  let check = new Date(dayStr + "T12:00:00");
+  const now = today ? new Date(today + "T12:00:00") : new Date();
+  let monday = getMonday(now);
   let streak = 0;
 
-  // If no workout today AND no workout yesterday, find the most recent day
-  if (!trainingDays.has(dayStr) && !trainingDays.has(yesterday)) {
-    const sorted = [...trainingDays].sort().reverse();
-    if (sorted.length === 0) return 0;
-    const mostRecent = new Date(sorted[0] + "T12:00:00");
-    const diffDays = Math.floor(
-      (todayMs - mostRecent.getTime()) / 86400000,
-    );
-    // Gap more than 1 day OR most recent day is in the future → streak broken
-    if (diffDays > 1 || diffDays < 0) return 0;
-    check = mostRecent;
+  // Check current week first
+  const thisWeekDays = countDaysInWeek(trainingDays, monday);
+
+  // If current week is incomplete (not enough days yet), start counting from last week
+  if (thisWeekDays < minDays) {
+    // Check if the current week can still hit the target
+    const daysLeft = 7 - now.getDay(); // days remaining including today
+    const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+    const daysSoFar = dayOfWeek; // Mon=1, Sun=7
+    // If we're early in the week and could still hit target, don't count this week against us
+    if (daysLeft >= minDays - thisWeekDays) {
+      // Week is still in progress — skip to last week
+      monday.setDate(monday.getDate() - 7);
+    } else {
+      // Week is almost over and target not met → streak resets
+      return 0;
+    }
   }
 
+  // Count backwards through completed weeks
   while (true) {
-    const checkStr = check.toISOString().slice(0, 10);
-    if (trainingDays.has(checkStr)) {
+    const days = countDaysInWeek(trainingDays, monday);
+    if (days >= minDays) {
       streak++;
-      check.setDate(check.getDate() - 1);
-    } else if (streak === 0) {
-      check.setDate(check.getDate() - 1);
+      monday.setDate(monday.getDate() - 7);
     } else {
       break;
     }
@@ -46,45 +79,47 @@ export function calcCurrentStreak(
   return streak;
 }
 
-export function calcLongestStreak(trainingDays: Set<string>): number {
+/**
+ * Longest weekly streak ever: max consecutive weeks with ≥ minDays trained.
+ */
+export function calcLongestWeeklyStreak(
+  trainingDays: Set<string>,
+  minDays = 3,
+): number {
+  if (trainingDays.size === 0) return 0;
+
+  // Find the date range
   const sorted = [...trainingDays].sort();
-  if (sorted.length === 0) return 0;
+  const firstDate = new Date(sorted[0] + "T12:00:00");
+  const lastDate = new Date(sorted[sorted.length - 1] + "T12:00:00");
+
+  // Iterate all Mondays in the range
+  let monday = getMonday(firstDate);
+  const finalMonday = getMonday(lastDate);
 
   let longest = 0;
-  let current = 1;
-  let prev = new Date(sorted[0] + "T12:00:00");
+  let current = 0;
 
-  for (let i = 1; i < sorted.length; i++) {
-    const curr = new Date(sorted[i] + "T12:00:00");
-    const diffDays = (curr.getTime() - prev.getTime()) / 86400000;
-    if (diffDays === 1) {
+  while (monday <= finalMonday) {
+    const days = countDaysInWeek(trainingDays, monday);
+    if (days >= minDays) {
       current++;
-    } else {
       longest = Math.max(longest, current);
-      current = 1;
+    } else {
+      current = 0;
     }
-    prev = curr;
+    monday.setDate(monday.getDate() + 7);
   }
 
-  return Math.max(longest, current);
+  return longest;
 }
 
-/** Calculate workout stats for the current week (Mon-Sun) */
+/** Count workouts in the current week (Mon-Sun) */
 export function calcWeeklyWorkouts(
   trainingDays: Set<string>,
   today?: string,
 ): number {
   const now = today ? new Date(today + "T12:00:00") : new Date();
-  const day = now.getDay();
-  const mondayDiff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayDiff);
-  monday.setHours(0, 0, 0, 0);
-
-  let count = 0;
-  for (const dayStr of trainingDays) {
-    const d = new Date(dayStr + "T12:00:00");
-    if (d >= monday) count++;
-  }
-  return count;
+  const monday = getMonday(now);
+  return countDaysInWeek(trainingDays, monday);
 }

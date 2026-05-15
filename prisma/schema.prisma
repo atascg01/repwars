@@ -53,6 +53,7 @@ model User {
   displayName        String?
   bio                String?
   unitPreference     String    @default("kg")   // "kg" | "lbs"
+  weeklyStreakTarget Int       @default(3)      // min workouts/week for streak
   timezone           String    @default("UTC")
   hashedPassword      String?                   // bcrypt hash for email/password auth
   hevyApiKeyEncrypted String?                   // encrypted at rest

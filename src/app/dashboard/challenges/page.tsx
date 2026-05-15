@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Swords,
@@ -30,6 +37,7 @@ const challengeTypes: Record<string, {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   desc: string;
+  explain: string;
   color: string;
   bg: string;
   border: string;
@@ -39,6 +47,7 @@ const challengeTypes: Record<string, {
     icon: Weight,
     label: "Iron King",
     desc: "Highest total volume",
+    explain: "Who lifts the most total weight across all workouts during the challenge? Sum of all weight × reps. Great for overall training volume.",
     color: "text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/30",
@@ -48,6 +57,7 @@ const challengeTypes: Record<string, {
     icon: CalendarDays,
     label: "Consistency",
     desc: "Most workouts logged",
+    explain: "Who shows up the most? Counts total number of workout sessions logged during the challenge period. Perfect for building habits.",
     color: "text-emerald-400",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
@@ -57,6 +67,7 @@ const challengeTypes: Record<string, {
     icon: Zap,
     label: "PR Breaker",
     desc: "Most personal records",
+    explain: "Who breaks the most personal records? A PR is counted any time you lift heavier than before for a given rep range. Great for strength-focused crews.",
     color: "text-violet-400",
     bg: "bg-violet-500/10",
     border: "border-violet-500/30",
@@ -66,6 +77,7 @@ const challengeTypes: Record<string, {
     icon: Flame,
     label: "Grinder",
     desc: "Highest single-session volume",
+    explain: "Who has the biggest single workout? Your heaviest session of the challenge counts. One epic day can win it. Rewards intensity over consistency.",
     color: "text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/30",
@@ -74,7 +86,8 @@ const challengeTypes: Record<string, {
   CUSTOM: {
     icon: Target,
     label: "Custom",
-    desc: "Exercise-specific",
+    desc: "Exercise-specific challenge",
+    explain: "Pick one exercise (e.g. Bench Press) and compete on total volume for that lift only. Everyone focuses on the same movement. Great for themed challenges or weak-point training.",
     color: "text-sky-400",
     bg: "bg-sky-500/10",
     border: "border-sky-500/30",
@@ -104,6 +117,19 @@ export default function ChallengesPage() {
   const [completed, setCompleted] = useState<ChallengeItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Create challenge state
+  const [showCreate, setShowCreate] = useState(false);
+  const [createCrewId, setCreateCrewId] = useState("");
+  const [createType, setCreateType] = useState("IRON_KING");
+  const [createTitle, setCreateTitle] = useState("");
+  const [createDesc, setCreateDesc] = useState("");
+  const [createDays, setCreateDays] = useState(7);
+  const [createExercise, setCreateExercise] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [crews, setCrews] = useState<{ id: string; name: string }[]>([]);
+  const [crewsLoading, setCrewsLoading] = useState(false);
+
   const fetchChallenges = useCallback(async () => {
     try {
       const res = await fetch("/api/challenges");
@@ -123,6 +149,71 @@ export default function ChallengesPage() {
     fetchChallenges();
   }, [fetchChallenges]);
 
+  const openCreate = useCallback(async () => {
+    setShowCreate(true);
+    setCreateError("");
+    if (crews.length === 0) {
+      setCrewsLoading(true);
+      try {
+        const res = await fetch("/api/crews");
+        if (res.ok) {
+          const data = await res.json();
+          const list = (data.crews ?? []).map((c: { id: string; name: string }) => ({
+            id: c.id,
+            name: c.name,
+          }));
+          setCrews(list);
+          if (list.length > 0 && !createCrewId) {
+            setCreateCrewId(list[0].id);
+          }
+        }
+      } catch { /* ignore */
+      } finally {
+        setCrewsLoading(false);
+      }
+    }
+  }, [crews.length, createCrewId]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createCrewId || !createTitle.trim()) return;
+    setCreateLoading(true);
+    setCreateError("");
+
+    try {
+      const res = await fetch("/api/challenges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crewId: createCrewId,
+          type: createType,
+          title: createTitle.trim(),
+          description: createDesc.trim() || null,
+          startDate: new Date().toISOString(),
+          endDate: new Date(Date.now() + createDays * 86400000).toISOString(),
+          exerciseFilter: createType === "CUSTOM" ? createExercise.trim() || null : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setCreateError(data.error ?? "Failed to create challenge");
+        return;
+      }
+
+      setShowCreate(false);
+      setCreateTitle("");
+      setCreateDesc("");
+      setCreateDays(7);
+      setCreateType("IRON_KING");
+      await fetchChallenges();
+    } catch {
+      setCreateError("Network error");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   return (
     <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-8">
       {/* Header */}
@@ -133,10 +224,156 @@ export default function ChallengesPage() {
             Compete. Climb. Conquer. Weekly battles with your crew.
           </p>
         </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Challenge
-        </Button>
+        <Button className="gap-2" onClick={() => openCreate()}>
+              <Plus className="h-4 w-4" />
+              New Challenge
+            </Button>
+          <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Challenge</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4 mt-4">
+              {/* Crew selector */}
+              <div>
+                <label className="text-sm font-medium">Crew</label>
+                {crewsLoading ? (
+                  <div className="mt-1.5 flex items-center gap-2 text-sm text-zinc-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading crews...
+                  </div>
+                ) : crews.length === 0 ? (
+                  <p className="mt-1.5 text-sm text-zinc-500">
+                    You need to join or create a crew first.
+                  </p>
+                ) : (
+                  <select
+                    value={createCrewId}
+                    onChange={(e) => setCreateCrewId(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-white text-sm outline-none focus:border-zinc-600"
+                    required
+                  >
+                    {crews.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Type selector */}
+              <div>
+                <label className="text-sm font-medium">Type</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1.5">
+                  {Object.entries(challengeTypes).map(([key, meta]) => {
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setCreateType(key)}
+                        className={`flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs transition-colors ${
+                          createType === key
+                            ? `${meta.border} ${meta.bg} ${meta.color}`
+                            : "border-zinc-800 hover:border-zinc-600 text-zinc-400"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Explanation for selected type */}
+                {challengeTypes[createType] && (
+                  <div className={`mt-3 rounded-lg ${challengeTypes[createType].bg} border ${challengeTypes[createType].border} p-3`}>
+                    <p className={`text-xs font-semibold ${challengeTypes[createType].color} mb-1`}>
+                      {challengeTypes[createType].label}: {challengeTypes[createType].desc}
+                    </p>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {challengeTypes[createType].explain}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {createType === "CUSTOM" && (
+                <div>
+                  <label className="text-sm font-medium">
+                    Exercise <span className="text-zinc-500">(e.g. Bench Press, Squat)</span>
+                  </label>
+                  <Input
+                    placeholder="Bench Press"
+                    className="mt-1.5"
+                    value={createExercise}
+                    onChange={(e) => setCreateExercise(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-sm font-medium">Title</label>
+                <Input
+                  placeholder="Iron King - Week 20"
+                  className="mt-1.5"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">
+                  Description <span className="text-zinc-500">(optional)</span>
+                </label>
+                <Input
+                  placeholder="Bring your A-game this week!"
+                  className="mt-1.5"
+                  value={createDesc}
+                  onChange={(e) => setCreateDesc(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Duration</label>
+                <select
+                  value={createDays}
+                  onChange={(e) => setCreateDays(Number(e.target.value))}
+                  className="mt-1.5 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-white text-sm outline-none focus:border-zinc-600"
+                >
+                  <option value={3}>3 days</option>
+                  <option value={5}>5 days</option>
+                  <option value={7}>1 week</option>
+                  <option value={14}>2 weeks</option>
+                  <option value={30}>1 month</option>
+                </select>
+              </div>
+
+              {createError && (
+                <p className="text-sm text-red-400">{createError}</p>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full gap-2"
+                disabled={
+                  createLoading ||
+                  !createCrewId ||
+                  !createTitle.trim() ||
+                  crews.length === 0
+                }
+              >
+                {createLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Swords className="h-4 w-4" />
+                )}
+                {createLoading ? "Creating..." : "Create Challenge"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Challenge Type Quick Overview */}
@@ -185,6 +422,7 @@ export default function ChallengesPage() {
               title="No Active Challenges"
               description="Join an existing challenge or create a new one for your crew."
               action="New Challenge"
+              onAction={() => openCreate()}
             />
           ) : (
             <div className="space-y-4">
@@ -379,18 +617,20 @@ function EmptyState({
   title,
   description,
   action,
+  onAction,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   action: string | null;
+  onAction?: () => void;
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 p-16 text-center bg-zinc-900/30">
       <div className="text-zinc-600 mb-4 flex justify-center">{icon}</div>
       <h3 className="text-xl font-bold mb-2">{title}</h3>
       <p className="text-zinc-500 max-w-sm mx-auto mb-6">{description}</p>
-      {action && <Button>{action}</Button>}
+      {action && <Button onClick={onAction}>{action}</Button>}
     </div>
   );
 }

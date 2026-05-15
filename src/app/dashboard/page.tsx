@@ -18,7 +18,7 @@ import { WorkoutHeatmap } from "@/components/charts/workout-heatmap";
 import { StreakCard } from "@/components/dashboard/streak-card";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { guessMuscleGroup, MUSCLE_COLORS, MUSCLE_LABELS } from "@/lib/muscle-groups";
-import { calcCurrentStreak, calcLongestStreak } from "@/lib/streaks";
+import { calcWeeklyStreak, calcLongestWeeklyStreak, calcWeeklyWorkouts } from "@/lib/streaks";
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -66,9 +66,12 @@ export default async function DashboardPage() {
       totalVolumeLifted: true,
       lastWorkoutDate: true,
       unitPreference: true,
+      weeklyStreakTarget: true,
       createdAt: true,
     },
   });
+
+  const streakTarget = user?.weeklyStreakTarget ?? 3;
 
   const displayName =
     user?.displayName ?? user?.name ?? session.user?.name ?? "Athlete";
@@ -121,9 +124,9 @@ export default async function DashboardPage() {
     allWorkoutDates.map((w) => w.startTime.toISOString().slice(0, 10)),
   );
 
-  const currentStreak = calcCurrentStreak(trainingDays);
+  const weeklyStreak = calcWeeklyStreak(trainingDays, streakTarget);
   const longestStreak = Math.max(
-    calcLongestStreak(trainingDays),
+    calcLongestWeeklyStreak(trainingDays, streakTarget),
     user?.longestStreak ?? 0,
   );
 
@@ -285,21 +288,15 @@ export default async function DashboardPage() {
               Member for {daysSinceJoin} days
             </span>
           )}
-          <Link
-            href="/api/auth/signout"
-            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-          >
-            Sign out
-          </Link>
         </div>
       </div>
 
       {/* ── Streak Card ─────────────────────────────────── */}
       <StreakCard
-        currentStreak={currentStreak}
+        currentStreak={weeklyStreak}
         longestStreak={longestStreak}
         workoutsThisWeek={totalWeeklyWorkouts}
-        targetDays={4}
+        targetDays={streakTarget}
       />
 
       {/* ── Stats Row ───────────────────────────────────── */}

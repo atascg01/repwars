@@ -8,6 +8,7 @@ import {
   Swords,
   Upload,
   Flame,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,7 @@ const navItems = [
   { href: "/dashboard/import", icon: Upload, label: "Import" },
 ];
 
-export function DashboardNav() {
+export function DashboardNav({ streak = 0 }: { streak?: number }) {
   const pathname = usePathname();
 
   return (
@@ -62,11 +63,29 @@ export function DashboardNav() {
             })}
           </div>
 
-          {/* Streak Display */}
-          <div className="hidden sm:flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-1.5">
-            <Flame className="h-4 w-4 text-orange-400" />
-            <span className="text-sm font-semibold text-orange-400">14</span>
-            <span className="text-xs text-zinc-500">days</span>
+          {/* Right side: Streak + Profile */}
+          <div className="hidden sm:flex items-center gap-2">
+            {/* Streak Display */}
+            <div className="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-3 py-1.5">
+              <Flame className={`h-4 w-4 ${streak > 0 ? "text-orange-400" : "text-zinc-600"}`} />
+              <span className={`text-sm font-semibold ${streak > 0 ? "text-orange-400" : "text-zinc-500"}`}>
+                {streak}
+              </span>
+              <span className="text-xs text-zinc-500">w</span>
+            </div>
+
+            {/* Profile */}
+            <Link
+              href="/dashboard/profile"
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                pathname === "/dashboard/profile"
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+              )}
+            >
+              <User className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </div>

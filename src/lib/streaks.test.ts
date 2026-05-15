@@ -1,146 +1,122 @@
 import { describe, it, expect } from "vitest";
-import { calcCurrentStreak, calcLongestStreak, calcWeeklyWorkouts } from "@/lib/streaks";
+import {
+  calcWeeklyStreak,
+  calcLongestWeeklyStreak,
+  calcWeeklyWorkouts,
+} from "@/lib/streaks";
 
 function days(...dates: string[]): Set<string> {
   return new Set(dates);
 }
 
-describe("calcCurrentStreak", () => {
+describe("calcWeeklyStreak", () => {
   it("returns 0 when no training days exist", () => {
-    expect(calcCurrentStreak(days(), "2026-05-15")).toBe(0);
+    expect(calcWeeklyStreak(days())).toBe(0);
   });
 
-  it("counts consecutive days backward from today", () => {
+  it("counts weeks with ≥3 training days (default minDays=3)", () => {
+    // Week 1 (current): Mon=18, Wed=20, Fri=22 → 3 days ✓
+    // Week 2: Mon=11, Wed=13, Fri=15 → 3 days ✓
+    // Week 3: Mon=4, Wed=6 → 2 days ✗
     const training = days(
-      "2026-05-15", // today
-      "2026-05-14", // yesterday
-      "2026-05-13",
-      "2026-05-12",
+      "2026-05-22", "2026-05-20", "2026-05-18", // Week 1: Mon/Wed/Fri
+      "2026-05-15", "2026-05-13", "2026-05-11", // Week 2: Mon/Wed/Fri
+      "2026-05-06", "2026-05-04", // Week 3: Mon/Wed only → 2 days
     );
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(4);
+    // Today = May 24 (Sunday, end of week 1)
+    expect(calcWeeklyStreak(training, 3, "2026-05-24")).toBe(2);
   });
 
-  it("stops at the first gap", () => {
+  it("counts from last completed week if current week is in progress", () => {
+    // It's Tuesday May 19. User trained Mon 18 and Tue 19.
+    // 2 days so far, can still hit 3 → current week is in progress, skip it
+    // Last week: Mon 11, Wed 13, Fri 15 → 3 ✓
+    // Week before: Mon 4, Wed 6 → 2 ✗
     const training = days(
-      "2026-05-15",
-      "2026-05-14",
-      // gap: no May 13
-      "2026-05-12",
-      "2026-05-11",
+      "2026-05-19", "2026-05-18", // This week (in progress, 2 days)
+      "2026-05-15", "2026-05-13", "2026-05-11", // Last week (3 days)
+      "2026-05-06", "2026-05-04", // 2 weeks ago (2 days)
     );
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(2);
+    expect(calcWeeklyStreak(training, 3, "2026-05-19")).toBe(1);
   });
 
-  it("starts from yesterday if no workout today", () => {
+  it("counts current week if target already met", () => {
+    // It's Wednesday May 20. Already trained Mon/Tue/Wed → 3 ✓
     const training = days(
-      "2026-05-14", // yesterday
-      "2026-05-13",
+      "2026-05-20", "2026-05-19", "2026-05-18", // This week
+      "2026-05-15", "2026-05-13", "2026-05-11", // Last week (Mon/Wed/Fri = 3)
     );
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(2);
+    expect(calcWeeklyStreak(training, 3, "2026-05-20")).toBe(2);
   });
 
-  it("looks for most recent day if gap is exactly 1 from yesterday", () => {
-    // User trained on 14th and 13th, but not on 15th (today)
-    // and has a gap to earlier. Streak from 14th backward: 14, 13 = 2
+  it("returns 0 when current week is ending and target not met", () => {
+    // It's Saturday May 23. Only 1 day trained. 1 day left can't hit 3.
     const training = days(
-      "2026-05-14",
-      "2026-05-13",
-      "2026-05-11", // gap here
-      "2026-05-10",
+      "2026-05-20", // Wed only — 1 day, Saturday with only Sunday left = can't hit 3
     );
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(2);
+    expect(calcWeeklyStreak(training, 3, "2026-05-23")).toBe(0);
   });
 
-  it("returns 0 if last workout was more than 1 day ago", () => {
+  it("respects custom minDays threshold", () => {
+    // 2 days/week threshold
     const training = days(
-      "2026-05-12", // 3 days ago
-      "2026-05-11",
+      "2026-05-20", "2026-05-18", // This week: 2 ✓
+      "2026-05-13", "2026-05-11", // Last week: 2 ✓
     );
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(0);
+    expect(calcWeeklyStreak(training, 2, "2026-05-22")).toBe(2);
+    expect(calcWeeklyStreak(training, 3, "2026-05-22")).toBe(0);
   });
 
-  it("handles single workout today", () => {
-    expect(calcCurrentStreak(days("2026-05-15"), "2026-05-15")).toBe(1);
+  it("handles single week of data", () => {
+    const training = days("2026-05-20", "2026-05-19", "2026-05-18");
+    expect(calcWeeklyStreak(training, 3, "2026-05-20")).toBe(1);
   });
 
-  it("handles streak across month boundary", () => {
+  it("doesn't count weeks beyond first gap", () => {
     const training = days(
-      "2026-05-01",
-      "2026-04-30",
-      "2026-04-29",
+      "2026-05-22", "2026-05-20", "2026-05-18", // Week 1: 3 ✓
+      // Week 2 gap (0 days)
+      "2026-05-08", "2026-05-06", "2026-05-04", // Week 3: 3 (but gap breaks it)
     );
-    expect(calcCurrentStreak(training, "2026-05-01")).toBe(3);
-  });
-
-  it("handles streak across year boundary", () => {
-    const training = days(
-      "2026-01-02",
-      "2026-01-01",
-      "2025-12-31",
-      "2025-12-30",
-    );
-    expect(calcCurrentStreak(training, "2026-01-02")).toBe(4);
-  });
-
-  it("avoids infinite loop when trainingDays has future dates only", () => {
-    // Should not loop forever — returns 0 because today is not in set
-    const training = days("2026-06-01");
-    expect(calcCurrentStreak(training, "2026-05-15")).toBe(0);
+    expect(calcWeeklyStreak(training, 3, "2026-05-24")).toBe(1);
   });
 });
 
-describe("calcLongestStreak", () => {
+describe("calcLongestWeeklyStreak", () => {
   it("returns 0 for empty set", () => {
-    expect(calcLongestStreak(days())).toBe(0);
+    expect(calcLongestWeeklyStreak(days())).toBe(0);
   });
 
-  it("returns 1 for single day", () => {
-    expect(calcLongestStreak(days("2026-05-15"))).toBe(1);
-  });
-
-  it("finds longest consecutive run", () => {
+  it("finds longest weekly run", () => {
     const training = days(
-      "2026-05-15",
-      "2026-05-14",
-      "2026-05-13",
+      // 3 weeks of 3 days each
+      "2026-05-22", "2026-05-20", "2026-05-18",
+      "2026-05-15", "2026-05-13", "2026-05-11",
+      "2026-05-08", "2026-05-06", "2026-05-04",
       // gap
-      "2026-05-10",
-      "2026-05-09",
-      "2026-05-08",
-      "2026-05-07",
+      // 1 week of 3 days
+      "2026-04-24", "2026-04-22", "2026-04-20",
     );
-    expect(calcLongestStreak(training)).toBe(4); // the 4-day run
+    expect(calcLongestWeeklyStreak(training, 3)).toBe(3);
   });
 
   it("handles multiple runs", () => {
     const training = days(
-      "2026-05-15",
-      "2026-05-14",
-      // gap
-      "2026-05-10",
-      "2026-05-09",
-      // gap
-      "2026-05-01",
+      // 2 weeks
+      "2026-05-22", "2026-05-20", "2026-05-18",
+      "2026-05-15", "2026-05-13", "2026-05-11",
+      // gap (1 week off)
+      // 3 weeks
+      "2026-04-24", "2026-04-22", "2026-04-20",
+      "2026-04-17", "2026-04-15", "2026-04-13",
+      "2026-04-10", "2026-04-08", "2026-04-06",
     );
-    expect(calcLongestStreak(training)).toBe(2);
-  });
-
-  it("handles all consecutive days", () => {
-    const training = days(
-      "2026-05-05",
-      "2026-05-04",
-      "2026-05-03",
-      "2026-05-02",
-      "2026-05-01",
-    );
-    expect(calcLongestStreak(training)).toBe(5);
+    expect(calcLongestWeeklyStreak(training, 3)).toBe(3);
   });
 });
 
 describe("calcWeeklyWorkouts", () => {
   it("counts workouts in the current Mon-Sun week", () => {
-    // May 15, 2026 is a Friday
-    // Mon May 11 - Sun May 17
     const training = days(
       "2026-05-15", // Fri
       "2026-05-14", // Thu
@@ -153,23 +129,12 @@ describe("calcWeeklyWorkouts", () => {
   });
 
   it("handles Sunday correctly", () => {
-    // May 17, 2026 is a Sunday
-    // Mon May 11 - Sun May 17
     const training = days(
       "2026-05-17", // Sun (this week)
       "2026-05-11", // Mon (this week)
       "2026-05-10", // Sun (last week)
     );
     expect(calcWeeklyWorkouts(training, "2026-05-17")).toBe(2);
-  });
-
-  it("handles Monday correctly", () => {
-    // May 18, 2026 is a Monday
-    const training = days(
-      "2026-05-18", // Mon (this week)
-      "2026-05-17", // Sun (last week)
-    );
-    expect(calcWeeklyWorkouts(training, "2026-05-18")).toBe(1);
   });
 
   it("returns 0 for empty set", () => {

@@ -42,9 +42,9 @@ function getDateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_LABELS = [
-  "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado",
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 ];
 
 // ── Page ──────────────────────────────────────────────────
@@ -275,21 +275,21 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">
-            👋 ¡Hola, {displayName}!
+            👋 Hey, {displayName}!
           </h1>
-          <p className="text-sm text-zinc-500 mt-0.5">Tu centro de mando</p>
+          <p className="text-sm text-zinc-500 mt-0.5">Your command center</p>
         </div>
         <div className="flex items-center gap-3">
           {daysSinceJoin !== null && (
             <span className="text-xs text-zinc-600 hidden sm:block">
-              Miembro desde hace {daysSinceJoin} días
+              Member for {daysSinceJoin} days
             </span>
           )}
           <Link
             href="/api/auth/signout"
             className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
           >
-            Salir
+            Sign out
           </Link>
         </div>
       </div>
@@ -305,25 +305,25 @@ export default async function DashboardPage() {
       {/* ── Stats Row ───────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatsCard
-          label="Volumen Semanal"
+          label="Weekly Volume"
           value={`${Math.round(totalWeeklyVolume).toLocaleString()} kg`}
           icon={Weight}
           accent="amber"
         />
         <StatsCard
-          label="Entrenos Semana"
+          label="Workouts This Week"
           value={String(totalWeeklyWorkouts)}
           icon={Dumbbell}
           accent="blue"
         />
         <StatsCard
-          label="Tiempo Total"
+          label="Total Time"
           value={timeStr}
           icon={Clock}
           accent="emerald"
         />
         <StatsCard
-          label="Victorias"
+          label="Challenge Wins"
           value={String(challengeWins)}
           icon={Trophy}
           accent="violet"
@@ -337,10 +337,10 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-2 mb-1">
             <BarChart3 className="h-4 w-4 text-amber-400" />
             <h3 className="text-sm font-semibold text-white">
-              Volumen Diario
+              Daily Volume
             </h3>
           </div>
-          <p className="text-xs text-zinc-500 mb-4">Esta semana</p>
+          <p className="text-xs text-zinc-500 mb-4">This week</p>
           <WeeklyVolumeChart data={weeklyBarData} />
         </div>
 
@@ -349,11 +349,11 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-2 mb-1">
             <Target className="h-4 w-4 text-violet-400" />
             <h3 className="text-sm font-semibold text-white">
-              Grupos Musculares
+              Muscle Groups
             </h3>
           </div>
           <p className="text-xs text-zinc-500 mb-4">
-            Distribución de volumen semanal
+            Weekly volume breakdown
           </p>
           <MuscleGroupDonut data={donutData} />
         </div>
@@ -364,10 +364,10 @@ export default async function DashboardPage() {
         <div className="flex items-center gap-2 mb-1">
           <TrendingUp className="h-4 w-4 text-blue-400" />
           <h3 className="text-sm font-semibold text-white">
-            Tendencia de Volumen
+            Volume Trend
           </h3>
         </div>
-        <p className="text-xs text-zinc-500 mb-4">Últimas 4 semanas</p>
+        <p className="text-xs text-zinc-500 mb-4">Last 4 weeks</p>
         <VolumeTrendChart data={weeklyTotals} />
       </div>
 
@@ -376,18 +376,18 @@ export default async function DashboardPage() {
         {/* Heatmap */}
         <div className="lg:col-span-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
           <h3 className="text-sm font-semibold text-white mb-1">
-            🔥 Historial de Actividad
+            🔥 Activity Heatmap
           </h3>
-          <p className="text-xs text-zinc-500 mb-4">Últimas 12 semanas</p>
+          <p className="text-xs text-zinc-500 mb-4">Last 12 weeks</p>
           <WorkoutHeatmap data={heatmapDays} weeks={12} />
           <div className="flex items-center gap-2 mt-4 justify-end">
-            <span className="text-[10px] text-zinc-600">Menos</span>
+            <span className="text-[10px] text-zinc-600">Less</span>
             <div className="h-3 w-3 rounded-sm bg-zinc-800/50" />
             <div className="h-3 w-3 rounded-sm bg-amber-500/15" />
             <div className="h-3 w-3 rounded-sm bg-amber-500/30" />
             <div className="h-3 w-3 rounded-sm bg-amber-500/50" />
             <div className="h-3 w-3 rounded-sm bg-amber-500/80" />
-            <span className="text-[10px] text-zinc-600">Más</span>
+            <span className="text-[10px] text-zinc-600">More</span>
           </div>
         </div>
 
@@ -396,7 +396,7 @@ export default async function DashboardPage() {
           {/* Top Exercises */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
             <h3 className="text-sm font-semibold text-white mb-4">
-              🏆 Top Ejercicios
+              🏆 Top Exercises
             </h3>
             {topExercises.length > 0 ? (
               <div className="space-y-3">
@@ -426,7 +426,7 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <p className="text-sm text-zinc-600 text-center py-4">
-                Sin datos esta semana
+                No data this week
               </p>
             )}
           </div>
@@ -434,7 +434,7 @@ export default async function DashboardPage() {
           {/* Recent Workouts */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
             <h3 className="text-sm font-semibold text-white mb-4">
-              📋 Últimos Entrenos
+              📋 Recent Workouts
             </h3>
             {recentWorkouts.length > 0 ? (
               <div className="space-y-2">
@@ -467,12 +467,12 @@ export default async function DashboardPage() {
                           {w.title}
                           {isToday && (
                             <span className="ml-1.5 text-[10px] text-emerald-400 font-medium">
-                              HOY
+                              TODAY
                             </span>
                           )}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          {w.exercises.length} ejercicios
+                          {w.exercises.length} exercise{w.exercises.length !== 1 ? "s" : ""}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-white tabular-nums shrink-0">
@@ -486,13 +486,13 @@ export default async function DashboardPage() {
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">🏋️</p>
                 <p className="text-sm text-zinc-500 mb-4">
-                  Aún no hay entrenos. ¡Importa tu primer CSV!
+                  No workouts yet. Import your first CSV to get started.
                 </p>
                 <Link
                   href="/dashboard/import"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors"
                 >
-                  Importar Datos
+                  Import Workouts
                 </Link>
               </div>
             )}
@@ -503,26 +503,26 @@ export default async function DashboardPage() {
       {/* ── Quick Actions ────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickAction
-          title="Importar CSV"
-          desc="Sube tus datos de Hevy"
+          title="Import CSV"
+          desc="Upload your Hevy data"
           href="/dashboard/import"
           emoji="📤"
         />
         <QuickAction
-          title="Mis Crews"
-          desc="Crea o únete a un crew"
+          title="My Crews"
+          desc="Create or join a crew"
           href="/dashboard/crews"
           emoji="👥"
         />
         <QuickAction
-          title="Desafíos"
-          desc="Competiciones semanales"
+          title="Challenges"
+          desc="Weekly competitions"
           href="/dashboard/challenges"
           emoji="⚔️"
         />
         <QuickAction
-          title="Perfil"
-          desc="Configura tu cuenta"
+          title="Profile"
+          desc="Manage your account"
           href="/dashboard/profile"
           emoji="⚙️"
         />

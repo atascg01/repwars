@@ -91,16 +91,16 @@ export const MUSCLE_COLORS: Record<string, string> = {
 };
 
 export const MUSCLE_LABELS: Record<string, string> = {
-  quadricep: "Cuádriceps",
-  hamstring: "Femoral",
-  glute: "Glúteo",
-  chest: "Pecho",
-  back: "Espalda",
-  shoulder: "Hombro",
-  bicep: "Bíceps",
-  tricep: "Tríceps",
-  abdominal: "Abdominal",
-  calf: "Gemelo",
-  adductor: "Aductor",
-  other: "Otros",
+  quadricep: "Quads",
+  hamstring: "Hamstrings",
+  glute: "Glutes",
+  chest: "Chest",
+  back: "Back",
+  shoulder: "Shoulders",
+  bicep: "Biceps",
+  tricep: "Triceps",
+  abdominal: "Abs",
+  calf: "Calves",
+  adductor: "Adductors",
+  other: "Other",
 };

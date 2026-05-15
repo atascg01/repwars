@@ -59,13 +59,8 @@ export default function ImportPage() {
         body: JSON.stringify({ apiKey }),
       });
       if (res.ok) {
-        const data = await res.json();
         setApiKeySaved(true);
         setApiKey("");
-        if (data.sync) {
-          setSyncResult(data.sync);
-          router.refresh();
-        }
       }
     } catch (err) {
       console.error("Failed to save API key:", err);
@@ -74,7 +69,15 @@ export default function ImportPage() {
     }
   };
 
+  // Auto-trigger initial sync after key is saved
+  useEffect(() => {
+    if (apiKeySaved && !syncResult) {
+      handleSyncNow();
+    }
+  }, [apiKeySaved]);
+
   const handleSyncNow = async () => {
+    if (syncing) return;
     setSyncing(true);
     try {
       const res = await fetch("/api/sync", { method: "POST" });
@@ -208,12 +211,21 @@ export default function ImportPage() {
             <div className="space-y-4">
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-8 text-center">
                 <div className="h-14 w-14 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="h-7 w-7 text-emerald-400" />
+                  {syncing ? (
+                    <Loader2 className="h-7 w-7 text-emerald-400 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-7 w-7 text-emerald-400" />
+                  )}
                 </div>
-                <h3 className="text-lg font-bold mb-1">API Key Connected</h3>
+                <h3 className="text-lg font-bold mb-1">
+                  {syncing ? "Syncing your workouts..." : "API Key Connected"}
+                </h3>
                 <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto">
-                  Your workouts will sync automatically every 24 hours. New data
-                  appears in challenges automatically.
+                  {syncing
+                    ? "Fetching your workout history from Hevy. This may take a moment."
+                    : syncResult
+                      ? `${syncResult.imported + syncResult.skipped} workouts synced. New data appears in challenges automatically.`
+                      : "Your workouts will sync automatically every 24 hours. New data appears in challenges automatically."}
                 </p>
                 <div className="flex items-center justify-center gap-3 mb-6">
                   <Badge className="gap-1 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
@@ -289,15 +301,15 @@ export default function ImportPage() {
 
                     <div className="bg-zinc-900 rounded-lg p-4 text-xs text-zinc-500 space-y-2">
                       <p className="font-medium text-zinc-400 mb-2">
-                        Cómo conseguir tu API Key:
+                        How to get your API Key:
                       </p>
                       <ol className="list-decimal list-inside space-y-1.5">
-                        <li>Ve a <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">hevy.com/settings?developer</a></li>
-                        <li>Haz clic en Generate API Key</li>
-                        <li>Copia y pega la key aquí</li>
+                        <li>Go to <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">hevy.com/settings?developer</a></li>
+                        <li>Click Generate API Key</li>
+                        <li>Copy and paste your key here</li>
                       </ol>
                       <p className="pt-2 text-zinc-600">
-                        💡 Necesitas Hevy Pro (2,99€/mes). La API key solo se genera desde la web, no desde la app.
+                        💡 Requires Hevy Pro ($2.99/mo). API keys are only available on the web, not in the mobile app.
                       </p>
                     </div>
 
@@ -307,11 +319,16 @@ export default function ImportPage() {
                       className="w-full gap-2"
                     >
                       {savingKey ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
                       ) : (
-                        <Zap className="h-4 w-4" />
+                        <>
+                          <Zap className="h-4 w-4" />
+                          Connect API Key
+                        </>
                       )}
-                      {savingKey ? "Saving..." : "Connect API Key"}
                     </Button>
                   </div>
                 </CardContent>

@@ -122,6 +122,8 @@ describe("MUSCLE_LABELS", () => {
     ];
     for (const key of expected) {
       expect(MUSCLE_LABELS[key]).toBeTruthy();
+      // Verify they're in English
+      expect(MUSCLE_LABELS[key]).not.toMatch(/[áéíóúüñ]/i);
     }
   });
 });

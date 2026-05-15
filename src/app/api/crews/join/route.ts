@@ -9,20 +9,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { inviteCode } = await req.json();
-  if (!inviteCode?.trim()) {
+  const { inviteCode, crewId } = await req.json();
+
+  let crew;
+
+  if (crewId) {
+    // Join public crew by ID (from discover page)
+    crew = await prisma.crew.findUnique({
+      where: { id: crewId },
+    });
+
+    if (!crew) {
+      return NextResponse.json({ error: "Crew not found" }, { status: 404 });
+    }
+
+    if (crew.privacy !== "PUBLIC") {
+      return NextResponse.json(
+        { error: "This crew requires an invite code" },
+        { status: 403 },
+      );
+    }
+  } else if (inviteCode?.trim()) {
+    crew = await prisma.crew.findUnique({
+      where: { inviteCode: inviteCode.trim().toUpperCase() },
+    });
+
+    if (!crew) {
+      return NextResponse.json({ error: "Crew not found" }, { status: 404 });
+    }
+  } else {
     return NextResponse.json(
-      { error: "Invite code is required" },
-      { status: 400 }
+      { error: "Invite code or crew ID is required" },
+      { status: 400 },
     );
-  }
-
-  const crew = await prisma.crew.findUnique({
-    where: { inviteCode: inviteCode.trim().toUpperCase() },
-  });
-
-  if (!crew) {
-    return NextResponse.json({ error: "Crew not found" }, { status: 404 });
   }
 
   // Check if already a member

@@ -46,7 +46,7 @@ describe("POST /api/auth/signup", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/contraseña|caracteres/i);
+    expect(body.error).toMatch(/contraseña|caracteres|password|characters/i);
   });
 
   it("creates a new user successfully", async () => {
@@ -78,6 +78,6 @@ describe("POST /api/auth/signup", () => {
     });
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body.error).toMatch(/existe|cuenta|email/i);
+    expect(body.error).toMatch(/existe|cuenta|email|already exists|account/i);
   });
 });

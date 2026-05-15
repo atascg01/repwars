@@ -37,6 +37,7 @@ export async function GET(
             select: {
               id: true,
               displayName: true,
+              name: true,
               image: true,
               currentStreak: true,
               totalVolumeLifted: true,
@@ -50,7 +51,7 @@ export async function GET(
         include: {
           participants: {
             include: {
-              user: { select: { id: true, displayName: true, image: true } },
+              user: { select: { id: true, displayName: true, name: true, image: true } },
             },
             orderBy: { score: "desc" },
           },
@@ -74,8 +75,8 @@ export async function GET(
     });
 
     members.push({
-      name: m.user.displayName ?? "Unknown",
-      initials: getInitials(m.user.displayName),
+      name: m.user.displayName ?? m.user.name ?? "Unknown",
+      initials: getInitials(m.user.displayName ?? m.user.name),
       role: m.role,
       streak: m.user.currentStreak,
       volume: m.user.totalVolumeLifted,
@@ -92,8 +93,8 @@ export async function GET(
     for (const p of activeChallenge.participants) {
       leaderboard.push({
         rank: p.rank,
-        name: p.user.displayName ?? "Unknown",
-        initials: getInitials(p.user.displayName),
+        name: p.user.displayName ?? p.user.name ?? "Unknown",
+        initials: getInitials(p.user.displayName ?? p.user.name),
         score: p.score,
       });
     }
@@ -114,7 +115,7 @@ export async function GET(
       participants: {
         where: { rank: 1 },
         include: {
-          user: { select: { displayName: true } },
+          user: { select: { displayName: true, name: true } },
         },
       },
       _count: { select: { participants: true } },
@@ -131,8 +132,8 @@ export async function GET(
       type: pc.type,
       winner: pc.participants[0]
         ? {
-            name: pc.participants[0].user.displayName ?? "Unknown",
-            initials: getInitials(pc.participants[0].user.displayName),
+            name: pc.participants[0].user.displayName ?? pc.participants[0].user.name ?? "Unknown",
+            initials: getInitials(pc.participants[0].user.displayName ?? pc.participants[0].user.name),
           }
         : null,
       participants: pc._count.participants,
@@ -150,7 +151,7 @@ export async function GET(
     orderBy: { startTime: "desc" },
     take: 20,
     include: {
-      user: { select: { displayName: true, image: true } },
+      user: { select: { displayName: true, name: true, image: true } },
       exercises: { include: { sets: true } },
     },
   });
@@ -162,7 +163,7 @@ export async function GET(
     orderBy: { earnedAt: "desc" },
     take: 5,
     include: {
-      user: { select: { displayName: true, image: true } },
+      user: { select: { displayName: true, name: true, image: true } },
       badge: true,
     },
   });
@@ -174,7 +175,7 @@ export async function GET(
     orderBy: { joinedAt: "desc" },
     take: 5,
     include: {
-      user: { select: { displayName: true, image: true } },
+      user: { select: { displayName: true, name: true, image: true } },
       challenge: { select: { title: true } },
     },
   });
@@ -207,9 +208,9 @@ export async function GET(
       id: `w-${w.id}`,
       type: "workout",
       user: {
-        name: w.user.displayName ?? "Unknown",
+        name: w.user.displayName ?? w.user.name ?? "Unknown",
         avatar: w.user.image,
-        initials: getInitials(w.user.displayName),
+        initials: getInitials(w.user.displayName ?? w.user.name),
       },
       workout: w.title,
       volume,
@@ -224,9 +225,9 @@ export async function GET(
       id: `b-${b.id}`,
       type: "badge",
       user: {
-        name: b.user.displayName ?? "Unknown",
+        name: b.user.displayName ?? b.user.name ?? "Unknown",
         avatar: b.user.image,
-        initials: getInitials(b.user.displayName),
+        initials: getInitials(b.user.displayName ?? b.user.name),
       },
       badge: b.badge.name,
       badgeIcon: b.badge.icon,
@@ -240,9 +241,9 @@ export async function GET(
       id: `j-${j.id}`,
       type: "challenge_join",
       user: {
-        name: j.user.displayName ?? "Unknown",
+        name: j.user.displayName ?? j.user.name ?? "Unknown",
         avatar: j.user.image,
-        initials: getInitials(j.user.displayName),
+        initials: getInitials(j.user.displayName ?? j.user.name),
       },
       challenge: j.challenge.title,
       time: getRelativeTime(j.joinedAt),

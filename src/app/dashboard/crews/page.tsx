@@ -56,6 +56,13 @@ export default function CrewsPage() {
   const [createDesc, setCreateDesc] = useState("");
   const [createPrivacy, setCreatePrivacy] = useState("INVITE_ONLY");
 
+  // Discover state
+  const [discoverCrews, setDiscoverCrews] = useState<Crew[]>([]);
+  const [discoverPage, setDiscoverPage] = useState(1);
+  const [discoverTotal, setDiscoverTotal] = useState(0);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+
   const fetchCrews = useCallback(async () => {
     try {
       const res = await fetch("/api/crews");
@@ -73,6 +80,49 @@ export default function CrewsPage() {
   useEffect(() => {
     fetchCrews();
   }, [fetchCrews]);
+
+  const fetchDiscover = useCallback(async (page = 1) => {
+    setDiscoverLoading(true);
+    try {
+      const res = await fetch(`/api/crews?discover=true&page=${page}&pageSize=12`);
+      if (res.ok) {
+        const data = await res.json();
+        setDiscoverCrews(data.crews ?? []);
+        setDiscoverTotal(data.total ?? 0);
+        setDiscoverPage(data.page ?? 1);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDiscoverLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "discover") {
+      fetchDiscover(1);
+    }
+  }, [activeTab, fetchDiscover]);
+
+  const handleJoinPublic = async (crewId: string) => {
+    setJoiningId(crewId);
+    try {
+      const res = await fetch("/api/crews/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ crewId }),
+      });
+      if (res.ok) {
+        await fetchCrews();
+        fetchDiscover(discoverPage);
+        router.refresh();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setJoiningId(null);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -293,14 +343,98 @@ export default function CrewsPage() {
         </TabsContent>
 
         <TabsContent value="discover" className="mt-6">
-          <div className="rounded-xl border border-zinc-800 p-12 text-center bg-zinc-900/30">
-            <Globe className="h-12 w-12 mx-auto text-zinc-600 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Coming Soon</h3>
-            <p className="text-zinc-500 max-w-md mx-auto">
-              Discover public crews from around the world. For now, join crews
-              via invite codes from your friends.
-            </p>
-          </div>
+          {discoverLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+            </div>
+          ) : discoverCrews.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 p-12 text-center bg-zinc-900/30">
+              <Globe className="h-12 w-12 mx-auto text-zinc-600 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No public crews yet</h3>
+              <p className="text-zinc-500 max-w-md mx-auto">
+                Be the first to create a public crew! Public crews appear here
+                for anyone to discover and join.
+              </p>
+              <Button className="mt-4" onClick={() => setShowCreate(true)}>
+                Create a Crew
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 gap-4">
+                {discoverCrews.map((crew) => (
+                  <Card key={crew.id} className="border-zinc-800 bg-zinc-900/50">
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-2xl font-black text-white shrink-0">
+                          {crew.name.charAt(0)}
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 bg-blue-500/10 text-blue-400 border-blue-500/20"
+                        >
+                          <Globe className="h-3 w-3" />
+                          Public
+                        </Badge>
+                      </div>
+
+                      <h3 className="font-bold text-lg">{crew.name}</h3>
+                      <p className="text-sm text-zinc-500 mt-1 line-clamp-2">
+                        {crew.description ?? "No description"}
+                      </p>
+
+                      <div className="flex items-center gap-4 mt-4 text-xs text-zinc-500">
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5" />
+                          {crew.memberCount} members
+                        </span>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        className="w-full mt-4 gap-2"
+                        onClick={() => handleJoinPublic(crew.id)}
+                        disabled={joiningId === crew.id}
+                      >
+                        {joiningId === crew.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <LogIn className="h-4 w-4" />
+                        )}
+                        Join Crew
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {discoverTotal > 12 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={discoverPage <= 1}
+                    onClick={() => fetchDiscover(discoverPage - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-zinc-500">
+                    Page {discoverPage} of{" "}
+                    {Math.ceil(discoverTotal / 12)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={discoverPage * 12 >= discoverTotal}
+                    onClick={() => fetchDiscover(discoverPage + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </main>

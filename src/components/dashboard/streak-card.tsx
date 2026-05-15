@@ -33,14 +33,14 @@ export function StreakCard({
           <div>
             <p className="text-3xl font-black text-white tabular-nums">
               {currentStreak}
-              <span className="text-lg font-normal text-zinc-500 ml-1">días</span>
+              <span className="text-lg font-normal text-zinc-500 ml-1">days</span>
             </p>
-            <p className="text-xs text-zinc-500">Racha actual</p>
+            <p className="text-xs text-zinc-500">Current streak</p>
           </div>
         </div>
         <div className="text-right">
           <p className="text-sm text-zinc-400">
-            Récord: <span className="font-bold text-white tabular-nums">{longestStreak}</span>d
+            Record: <span className="font-bold text-white tabular-nums">{longestStreak}</span>d
           </p>
         </div>
       </div>
@@ -48,9 +48,9 @@ export function StreakCard({
       {/* Weekly progress bar */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-zinc-500">Esta semana</span>
+          <span className="text-xs text-zinc-500">This week</span>
           <span className="text-xs text-zinc-400 tabular-nums">
-            {workoutsThisWeek}/{targetDays} días
+            {workoutsThisWeek}/{targetDays} days
           </span>
         </div>
         <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">

@@ -3,12 +3,57 @@ import { prisma } from "@/lib/prisma";
 import { generateInviteCode } from "@/lib/utils";
 import { NextRequest, NextResponse } from "next/server";
 
-/** GET /api/crews — List user's crews */
-export async function GET() {
+/** GET /api/crews — List user's crews, or discover public crews */
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { searchParams } = new URL(req.url);
+  const discover = searchParams.get("discover");
+
+  // ── Discover: list public crews the user hasn't joined ──
+  if (discover !== null) {
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+    const pageSize = Math.min(20, Math.max(1, parseInt(searchParams.get("pageSize") ?? "12")));
+
+    const [publicCrews, total] = await Promise.all([
+      prisma.crew.findMany({
+        where: {
+          privacy: "PUBLIC",
+          members: { none: { userId: session.user.id } },
+        },
+        include: {
+          _count: { select: { members: true } },
+          owner: { select: { id: true, displayName: true, image: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.crew.count({
+        where: {
+          privacy: "PUBLIC",
+          members: { none: { userId: session.user.id } },
+        },
+      }),
+    ]);
+
+    const crews = publicCrews.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      avatar: c.avatar,
+      privacy: c.privacy,
+      memberCount: c._count.members,
+      owner: c.owner,
+    }));
+
+    return NextResponse.json({ crews, total, page, pageSize });
+  }
+
+  // ── My crews ──
 
   const memberships = await prisma.crewMember.findMany({
     where: { userId: session.user.id },

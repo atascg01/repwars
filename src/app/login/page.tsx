@@ -31,13 +31,13 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError("Email o contraseña incorrectos");
+        setError("Invalid email or password");
         setLoading(false);
         return;
       }
 
       if (!result?.ok) {
-        setError("Error al iniciar sesión");
+        setError("Sign in failed");
         setLoading(false);
         return;
       }
@@ -45,7 +45,7 @@ export default function LoginPage() {
       // Full-page redirect ensures NextAuth session cookie is set properly
       window.location.href = callbackUrl;
     } catch {
-      setError("Error al iniciar sesión");
+      setError("Error signing in");
       setLoading(false);
     }
   }
@@ -56,7 +56,7 @@ export default function LoginPage() {
     setLoading(true);
 
     if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres");
+      setError("Password must be at least 8 characters");
       setLoading(false);
       return;
     }
@@ -70,7 +70,7 @@ export default function LoginPage() {
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Error al crear la cuenta");
+        setError(data.error || "Error creating account");
         setLoading(false);
         return;
       }
@@ -84,7 +84,7 @@ export default function LoginPage() {
 
       if (!signInResult?.ok || signInResult?.error) {
         setError(
-          "Cuenta creada. Ya puedes iniciar sesión desde la otra pestaña.",
+          "Account created. You can now sign in from the other tab.",
         );
         setTab("login");
         setLoading(false);
@@ -93,7 +93,7 @@ export default function LoginPage() {
 
       window.location.href = callbackUrl;
     } catch {
-      setError("Error al crear la cuenta");
+      setError("Error creating account");
       setLoading(false);
     }
   }
@@ -119,7 +119,7 @@ export default function LoginPage() {
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            Iniciar Sesión
+            Sign In
           </button>
           <button
             onClick={() => { setTab("signup"); setError(""); }}
@@ -129,7 +129,7 @@ export default function LoginPage() {
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            Registrarse
+            Sign Up
           </button>
         </div>
 
@@ -148,7 +148,7 @@ export default function LoginPage() {
           {tab === "signup" && (
             <input
               type="text"
-              placeholder="Nombre (opcional)"
+              placeholder="Display name (optional)"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-white placeholder-zinc-500 outline-none focus:border-zinc-600 transition-colors"
@@ -166,7 +166,7 @@ export default function LoginPage() {
 
           <input
             type="password"
-            placeholder="Contraseña"
+            placeholder="Password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -180,10 +180,10 @@ export default function LoginPage() {
             className="w-full rounded-xl bg-white px-6 py-3.5 text-base font-semibold text-black hover:bg-zinc-200 transition-colors disabled:opacity-50"
           >
             {loading
-              ? "Cargando..."
+              ? "Loading..."
               : tab === "login"
-                ? "Iniciar Sesión"
-                : "Crear Cuenta"}
+                ? "Sign In"
+                : "Create Account"}
           </button>
         </form>
 
@@ -202,7 +202,7 @@ export default function LoginPage() {
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
             <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
           </svg>
-          Continuar con Discord
+          Continue with Discord
         </Link>
 
         <p className="text-sm text-zinc-600">

@@ -24,7 +24,7 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
 
   // Build grid: rows = days of week (Mon-Sun), cols = weeks
   const days = ["", "L", "", "X", "", "V", ""]; // Mon through Sun labels
-  const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   // Organize data into a grid[dayOfWeek][weekIndex]
   const grid: (HeatmapDay | null)[][] = Array.from({ length: 7 }, () =>
@@ -53,7 +53,7 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
               key={i}
               className="h-3 w-6 flex items-center text-[9px] text-zinc-600"
             >
-              {["Lun", "Mié", "Vie"].includes(label) ? label : ""}
+              {["Mon", "Wed", "Fri"].includes(label) ? label : ""}
             </div>
           ))}
         </div>

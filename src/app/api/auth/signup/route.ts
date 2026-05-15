@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "Email y contraseña son obligatorios" },
+        { error: "Email and password are required" },
         { status: 400 },
       );
     }
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     if (password.length < 8) {
       return NextResponse.json(
-        { error: "La contraseña debe tener al menos 8 caracteres" },
+        { error: "Password must be at least 8 characters" },
         { status: 400 },
       );
     }
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "Ya existe una cuenta con ese email" },
+        { error: "An account with this email already exists" },
         { status: 409 },
       );
     }
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Signup error:", error);
     return NextResponse.json(
-      { error: "Error al crear la cuenta" },
+      { error: "Error creating account" },
       { status: 500 },
     );
   }

@@ -1,7 +1,52 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+  Dumbbell,
+  Weight,
+  BarChart3,
+  Trophy,
+  TrendingUp,
+  Clock,
+  Target,
+} from "lucide-react";
+import { WeeklyVolumeChart } from "@/components/charts/weekly-volume-chart";
+import { MuscleGroupDonut } from "@/components/charts/muscle-group-donut";
+import { VolumeTrendChart } from "@/components/charts/volume-trend-chart";
+import { WorkoutHeatmap } from "@/components/charts/workout-heatmap";
+import { StreakCard } from "@/components/dashboard/streak-card";
+import { StatsCard } from "@/components/dashboard/stats-card";
+import { guessMuscleGroup, MUSCLE_COLORS, MUSCLE_LABELS } from "@/lib/muscle-groups";
+
+// ── Helpers ───────────────────────────────────────────────
+
+function getMonday(d: Date = new Date()): Date {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function daysAgo(n: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+const DAY_NAMES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const DAY_LABELS = [
+  "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado",
+];
+
+// ── Page ──────────────────────────────────────────────────
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -9,38 +54,45 @@ export default async function DashboardPage() {
 
   const userId = session.user.id;
 
-  // ── User profile ──
+  // Fetch user
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       displayName: true,
+      name: true,
       currentStreak: true,
       longestStreak: true,
       totalVolumeLifted: true,
+      lastWorkoutDate: true,
+      unitPreference: true,
+      createdAt: true,
     },
   });
 
-  // ── Weekly stats ──
-  const monday = getWeekStart();
+  const displayName = user?.displayName ?? user?.name ?? "Athlete";
+
+  // Date ranges
+  const weekStart = getMonday();
+  const fourWeeksAgo = daysAgo(28);
+  const twelveWeeksAgo = daysAgo(84);
+
+  // ── This week's workouts ──
   const weekWorkouts = await prisma.workout.findMany({
-    where: { userId, startTime: { gte: monday } },
+    where: { userId, startTime: { gte: weekStart } },
+    include: { exercises: { include: { sets: true } } },
+    orderBy: { startTime: "desc" },
+  });
+
+  // ── Previous 4 weeks for trend ──
+  const monthWorkouts = await prisma.workout.findMany({
+    where: { userId, startTime: { gte: fourWeeksAgo } },
     include: { exercises: { include: { sets: true } } },
   });
 
-  let weeklyVolume = 0;
-  for (const w of weekWorkouts) {
-    for (const e of w.exercises) {
-      for (const s of e.sets) {
-        if (s.weightKg && s.reps) {
-          weeklyVolume += s.weightKg * s.reps;
-        }
-      }
-    }
-  }
-
-  // ── Challenge wins ──
-  const challengeWins = await prisma.challengeParticipant.count({
-    where: { userId, rank: 1 },
+  // ── Last 12 weeks for heatmap ──
+  const heatmapWorkouts = await prisma.workout.findMany({
+    where: { userId, startTime: { gte: twelveWeeksAgo } },
+    include: { exercises: { include: { sets: true } } },
   });
 
   // ── Recent workouts ──
@@ -48,169 +100,441 @@ export default async function DashboardPage() {
     where: { userId },
     orderBy: { startTime: "desc" },
     take: 5,
-    include: {
-      exercises: { include: { sets: true } },
-    },
+    include: { exercises: { include: { sets: true } } },
   });
 
+  // ── Challenge wins ──
+  const challengeWins = await prisma.challengeParticipant.count({
+    where: { userId, rank: 1 },
+  });
+
+  // ── Compute weekly volume per day ──────────────────────
+  const dailyVolume: Record<string, number> = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    dailyVolume[getDateStr(d)] = 0;
+  }
+
+  for (const w of weekWorkouts) {
+    const key = w.startTime.toISOString().slice(0, 10);
+    if (dailyVolume[key] !== undefined) {
+      let vol = 0;
+      for (const e of w.exercises) {
+        for (const s of e.sets) {
+          if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+        }
+      }
+      dailyVolume[key] = (dailyVolume[key] ?? 0) + vol;
+    }
+  }
+
+  const weeklyBarData = Object.entries(dailyVolume).map(([dateStr, vol]) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const dayIdx = d.getDay();
+    return {
+      day: DAY_NAMES[dayIdx],
+      label: DAY_LABELS[dayIdx],
+      volume: Math.round(vol),
+    };
+  });
+
+  const totalWeeklyVolume = Object.values(dailyVolume).reduce((s, v) => s + v, 0);
+  const totalWeeklyWorkouts = weekWorkouts.length;
+
+  // ── Compute muscle group distribution ──────────────────
+  const muscleVolumes: Record<string, number> = {};
+  for (const w of weekWorkouts) {
+    for (const e of w.exercises) {
+      const group = guessMuscleGroup(e.title);
+      if (!group) continue;
+
+      let vol = 0;
+      for (const s of e.sets) {
+        if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+      }
+      if (vol > 0) {
+        muscleVolumes[group] = (muscleVolumes[group] ?? 0) + vol;
+      }
+    }
+  }
+
+  const donutData = Object.entries(muscleVolumes)
+    .sort(([, a], [, b]) => b - a)
+    .map(([group, vol]) => ({
+      name: MUSCLE_LABELS[group] ?? group,
+      volume: Math.round(vol),
+      color: MUSCLE_COLORS[group] ?? "#71717a",
+    }));
+
+  // ── Compute 4-week trend ───────────────────────────────
+  const weeklyTotals: { week: string; volume: number }[] = [];
+  for (let w = 3; w >= 0; w--) {
+    const start = new Date(weekStart);
+    start.setDate(start.getDate() - w * 7);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+
+    let vol = 0;
+    for (const workout of monthWorkouts) {
+      const t = new Date(workout.startTime).getTime();
+      if (t >= start.getTime() && t < end.getTime()) {
+        for (const e of workout.exercises) {
+          for (const s of e.sets) {
+            if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+          }
+        }
+      }
+    }
+
+    const endLabel = new Date(end);
+    endLabel.setDate(endLabel.getDate() - 1);
+    weeklyTotals.push({
+      week: `${start.getDate()}/${start.getMonth() + 1}`,
+      volume: Math.round(vol),
+    });
+  }
+
+  // ── Compute heatmap data ───────────────────────────────
+  const heatmapDays: { date: string; volume: number }[] = [];
+  const heatmapMap: Record<string, number> = {};
+  for (const w of heatmapWorkouts) {
+    const key = w.startTime.toISOString().slice(0, 10);
+    let vol = 0;
+    for (const e of w.exercises) {
+      for (const s of e.sets) {
+        if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+      }
+    }
+    heatmapMap[key] = (heatmapMap[key] ?? 0) + vol;
+  }
+  for (const [date, vol] of Object.entries(heatmapMap)) {
+    heatmapDays.push({ date, volume: Math.round(vol) });
+  }
+
+  // ── Weekly time ────────────────────────────────────────
+  let weeklyTimeMin = 0;
+  for (const w of weekWorkouts) {
+    const duration =
+      (new Date(w.endTime).getTime() - new Date(w.startTime).getTime()) / 60000;
+    if (duration > 0 && duration < 300) weeklyTimeMin += duration;
+  }
+  const timeStr =
+    weeklyTimeMin >= 60
+      ? `${Math.floor(weeklyTimeMin / 60)}h ${Math.round(weeklyTimeMin % 60)}m`
+      : `${Math.round(weeklyTimeMin)}m`;
+
+  // ── Top exercises ──────────────────────────────────────
+  const exerciseVolumes: { title: string; volume: number }[] = [];
+  for (const w of weekWorkouts) {
+    for (const e of w.exercises) {
+      let vol = 0;
+      for (const s of e.sets) {
+        if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+      }
+      if (vol > 0) {
+        const existing = exerciseVolumes.find((x) => x.title === e.title);
+        if (existing) existing.volume += vol;
+        else exerciseVolumes.push({ title: e.title, volume: vol });
+      }
+    }
+  }
+  const topExercises = exerciseVolumes
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 3);
+
+  // ── Member since ───────────────────────────────────────
+  const daysSinceJoin = user?.createdAt
+    ? Math.floor(
+        (Date.now() - new Date(user.createdAt).getTime()) / 86400000,
+      )
+    : null;
+
   return (
-    <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full space-y-8">
-      {/* Header */}
+    <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full space-y-6">
+      {/* ── Header ─────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">
-            Welcome, {user?.displayName ?? session.user.name ?? "Athlete"}
+          <h1 className="text-2xl font-bold text-white">
+            👋 ¡Hola, {displayName}!
           </h1>
-          <p className="text-zinc-500">Your command center</p>
+          <p className="text-sm text-zinc-500 mt-0.5">Tu centro de mando</p>
         </div>
-        <Link
-          href="/api/auth/signout"
-          className="text-sm text-zinc-500 hover:text-zinc-300"
-        >
-          Sign out
-        </Link>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Workouts This Week"
-          value={String(weekWorkouts.length)}
-        />
-        <StatCard
-          label="Weekly Volume"
-          value={`${Math.round(weeklyVolume).toLocaleString()} kg`}
-        />
-        <StatCard
-          label="Current Streak"
-          value={user?.currentStreak ? `${user.currentStreak}d` : "—"}
-        />
-        <StatCard
-          label="Challenge Wins"
-          value={String(challengeWins)}
-        />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <ActionCard
-          title="Import Workouts"
-          desc="Upload your Hevy CSV"
-          href="/dashboard/import"
-          icon="📤"
-        />
-        <ActionCard
-          title="My Crews"
-          desc="Create or join a crew"
-          href="/dashboard/crews"
-          icon="👥"
-        />
-        <ActionCard
-          title="Challenges"
-          desc="Active weekly competitions"
-          href="/dashboard/challenges"
-          icon="⚔️"
-        />
-      </div>
-
-      {/* Recent Workouts */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Recent Workouts</h2>
-        <div className="rounded-xl border border-zinc-800 divide-y divide-zinc-800">
-          {recentWorkouts.length > 0 ? (
-            recentWorkouts.map((w) => {
-              let vol = 0;
-              for (const e of w.exercises) {
-                for (const s of e.sets) {
-                  if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
-                }
-              }
-              return (
-                <div
-                  key={w.id}
-                  className="flex items-center justify-between p-4 hover:bg-zinc-900/50 transition-colors"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{w.title}</p>
-                    <p className="text-xs text-zinc-500">
-                      {new Date(w.startTime).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold tabular-nums">
-                      {Math.round(vol).toLocaleString()} kg
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {w.exercises.length} exercise{w.exercises.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="p-6 text-center text-zinc-600">
-              <p className="text-4xl mb-2">🏋️</p>
-              <p>No workouts yet. Upload your first CSV to get started.</p>
-              <Link
-                href="/dashboard/import"
-                className="inline-block mt-4 px-6 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors"
-              >
-                Import Workouts
-              </Link>
-            </div>
+        <div className="flex items-center gap-3">
+          {daysSinceJoin !== null && (
+            <span className="text-xs text-zinc-600 hidden sm:block">
+              Miembro desde hace {daysSinceJoin} días
+            </span>
           )}
+          <Link
+            href="/api/auth/signout"
+            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Salir
+          </Link>
         </div>
-      </section>
+      </div>
+
+      {/* ── Streak Card ─────────────────────────────────── */}
+      <StreakCard
+        currentStreak={user?.currentStreak ?? 0}
+        longestStreak={user?.longestStreak ?? 0}
+        workoutsThisWeek={totalWeeklyWorkouts}
+        targetDays={4}
+      />
+
+      {/* ── Stats Row ───────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatsCard
+          label="Volumen Semanal"
+          value={`${Math.round(totalWeeklyVolume).toLocaleString()} kg`}
+          icon={Weight}
+          accent="amber"
+        />
+        <StatsCard
+          label="Entrenos Semana"
+          value={String(totalWeeklyWorkouts)}
+          icon={Dumbbell}
+          accent="blue"
+        />
+        <StatsCard
+          label="Tiempo Total"
+          value={timeStr}
+          icon={Clock}
+          accent="emerald"
+        />
+        <StatsCard
+          label="Victorias"
+          value={String(challengeWins)}
+          icon={Trophy}
+          accent="violet"
+        />
+      </div>
+
+      {/* ── Charts Row ──────────────────────────────────── */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Weekly Volume Bar Chart */}
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <BarChart3 className="h-4 w-4 text-amber-400" />
+            <h3 className="text-sm font-semibold text-white">
+              Volumen Diario
+            </h3>
+          </div>
+          <p className="text-xs text-zinc-500 mb-4">Esta semana</p>
+          <WeeklyVolumeChart data={weeklyBarData} />
+        </div>
+
+        {/* Muscle Group Donut */}
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Target className="h-4 w-4 text-violet-400" />
+            <h3 className="text-sm font-semibold text-white">
+              Grupos Musculares
+            </h3>
+          </div>
+          <p className="text-xs text-zinc-500 mb-4">
+            Distribución de volumen semanal
+          </p>
+          <MuscleGroupDonut data={donutData} />
+        </div>
+      </div>
+
+      {/* ── Volume Trend ────────────────────────────────── */}
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="h-4 w-4 text-blue-400" />
+          <h3 className="text-sm font-semibold text-white">
+            Tendencia de Volumen
+          </h3>
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">Últimas 4 semanas</p>
+        <VolumeTrendChart data={weeklyTotals} />
+      </div>
+
+      {/* ── Heatmap + Recent Workouts ───────────────────── */}
+      <div className="grid lg:grid-cols-5 gap-6">
+        {/* Heatmap */}
+        <div className="lg:col-span-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-1">
+            🔥 Historial de Actividad
+          </h3>
+          <p className="text-xs text-zinc-500 mb-4">Últimas 12 semanas</p>
+          <WorkoutHeatmap data={heatmapDays} weeks={12} />
+          <div className="flex items-center gap-2 mt-4 justify-end">
+            <span className="text-[10px] text-zinc-600">Menos</span>
+            <div className="h-3 w-3 rounded-sm bg-zinc-800/50" />
+            <div className="h-3 w-3 rounded-sm bg-amber-500/15" />
+            <div className="h-3 w-3 rounded-sm bg-amber-500/30" />
+            <div className="h-3 w-3 rounded-sm bg-amber-500/50" />
+            <div className="h-3 w-3 rounded-sm bg-amber-500/80" />
+            <span className="text-[10px] text-zinc-600">Más</span>
+          </div>
+        </div>
+
+        {/* Recent Workouts + Top Exercises */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Top Exercises */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <h3 className="text-sm font-semibold text-white mb-4">
+              🏆 Top Ejercicios
+            </h3>
+            {topExercises.length > 0 ? (
+              <div className="space-y-3">
+                {topExercises.map((ex, i) => (
+                  <div key={ex.title} className="flex items-center gap-3">
+                    <span
+                      className={`text-sm font-bold w-5 ${
+                        i === 0
+                          ? "text-amber-400"
+                          : i === 1
+                            ? "text-zinc-400"
+                            : "text-zinc-600"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-300 truncate">
+                        {ex.title}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-white tabular-nums shrink-0">
+                      {Math.round(ex.volume).toLocaleString()} kg
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-600 text-center py-4">
+                Sin datos esta semana
+              </p>
+            )}
+          </div>
+
+          {/* Recent Workouts */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <h3 className="text-sm font-semibold text-white mb-4">
+              📋 Últimos Entrenos
+            </h3>
+            {recentWorkouts.length > 0 ? (
+              <div className="space-y-2">
+                {recentWorkouts.slice(0, 5).map((w) => {
+                  let vol = 0;
+                  for (const e of w.exercises) {
+                    for (const s of e.sets) {
+                      if (s.weightKg && s.reps) vol += s.weightKg * s.reps;
+                    }
+                  }
+                  const date = new Date(w.startTime);
+                  const isToday =
+                    getDateStr(date) === getDateStr(new Date());
+
+                  return (
+                    <div
+                      key={w.id}
+                      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-zinc-800/50 transition-colors"
+                    >
+                      <div className="text-center shrink-0 w-10">
+                        <p className="text-xs font-medium text-zinc-400">
+                          {date.getDate()}
+                        </p>
+                        <p className="text-[10px] text-zinc-600">
+                          {DAY_NAMES[date.getDay()]}
+                        </p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-zinc-200 truncate">
+                          {w.title}
+                          {isToday && (
+                            <span className="ml-1.5 text-[10px] text-emerald-400 font-medium">
+                              HOY
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          {w.exercises.length} ejercicios
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-white tabular-nums shrink-0">
+                        {Math.round(vol).toLocaleString()} kg
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-3xl mb-2">🏋️</p>
+                <p className="text-sm text-zinc-500 mb-4">
+                  Aún no hay entrenos. ¡Importa tu primer CSV!
+                </p>
+                <Link
+                  href="/dashboard/import"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-medium transition-colors"
+                >
+                  Importar Datos
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick Actions ────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <QuickAction
+          title="Importar CSV"
+          desc="Sube tus datos de Hevy"
+          href="/dashboard/import"
+          emoji="📤"
+        />
+        <QuickAction
+          title="Mis Crews"
+          desc="Crea o únete a un crew"
+          href="/dashboard/crews"
+          emoji="👥"
+        />
+        <QuickAction
+          title="Desafíos"
+          desc="Competiciones semanales"
+          href="/dashboard/challenges"
+          emoji="⚔️"
+        />
+        <QuickAction
+          title="Perfil"
+          desc="Configura tu cuenta"
+          href="/dashboard/profile"
+          emoji="⚙️"
+        />
+      </div>
     </main>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 p-4 bg-zinc-900/50">
-      <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-        {label}
-      </p>
-      <p className="text-2xl font-bold">{value}</p>
-    </div>
-  );
-}
+// ── Quick Action Card ─────────────────────────────────────
 
-function ActionCard({
+function QuickAction({
   title,
   desc,
   href,
-  icon,
+  emoji,
 }: {
   title: string;
   desc: string;
   href: string;
-  icon: string;
+  emoji: string;
 }) {
   return (
     <Link
       href={href}
-      className="block rounded-xl border border-zinc-800 p-5 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900 transition-all group"
+      className="block rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 hover:border-zinc-700 hover:bg-zinc-900 transition-all group"
     >
-      <span className="text-2xl">{icon}</span>
-      <h3 className="text-lg font-semibold mt-3 group-hover:text-white">
+      <span className="text-2xl">{emoji}</span>
+      <h3 className="text-sm font-semibold text-white mt-2 group-hover:text-amber-400 transition-colors">
         {title}
       </h3>
-      <p className="text-sm text-zinc-500 mt-1">{desc}</p>
+      <p className="text-xs text-zinc-500 mt-0.5">{desc}</p>
     </Link>
   );
-}
-
-function getWeekStart(): Date {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now.setDate(diff));
-  monday.setHours(0, 0, 0, 0);
-  return monday;
 }

@@ -54,6 +54,7 @@ model User {
   bio                String?
   unitPreference     String    @default("kg")   // "kg" | "lbs"
   timezone           String    @default("UTC")
+  hashedPassword      String?                   // bcrypt hash for email/password auth
   hevyApiKeyEncrypted String?                   // encrypted at rest
   totalVolumeLifted   Float    @default(0)      // lifetime kg
   currentStreak      Int       @default(0)

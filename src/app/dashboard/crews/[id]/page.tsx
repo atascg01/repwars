@@ -4,6 +4,7 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -128,6 +129,7 @@ export default function CrewPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const { toast } = useToast();
   const [crew, setCrew] = useState<CrewDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -169,7 +171,14 @@ export default function CrewPage({
     if (!crew) return;
     navigator.clipboard.writeText(crew.inviteCode);
     setCopied(true);
+    toast("Invite code copied!", "success");
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url);
+    toast("Link copied! Share it with your crew.", "success");
   };
 
   const openEdit = () => {
@@ -310,6 +319,11 @@ export default function CrewPage({
                 <Share2 className="h-4 w-4" />
               )}
               {copied ? "Copied!" : "Invite"}
+            </Button>
+
+            {/* Share */}
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleShare}>
+              <Share2 className="h-4 w-4" />
             </Button>
 
             {/* Settings */}

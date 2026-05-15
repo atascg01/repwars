@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,6 +10,8 @@ import {
   Upload,
   Flame,
   User,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,11 +24,20 @@ const navItems = [
 
 export function DashboardNav({ streak = 0 }: { streak?: number }) {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <nav className="sticky top-0 z-50 glass border-b border-white/5">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-14">
+          {/* Mobile hamburger */}
+          <button
+            className="sm:hidden mr-2 text-zinc-400 hover:text-white transition-colors"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+
           {/* Logo */}
           <Link
             href="/dashboard"
@@ -89,6 +101,42 @@ export function DashboardNav({ streak = 0 }: { streak?: number }) {
           </div>
         </div>
       </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="sm:hidden border-t border-white/5 bg-zinc-950 px-4 py-3 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              pathname === item.href ||
+              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
+                  isActive
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+          <Link
+            href="/dashboard/profile"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+          >
+            <User className="h-4 w-4" />
+            Profile
+          </Link>
+        </div>
+      )}
     </nav>
   );
 }

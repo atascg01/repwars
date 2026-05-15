@@ -185,6 +185,18 @@ export default function LoginPage() {
                 ? "Sign In"
                 : "Create Account"}
           </button>
+
+          {tab === "login" && (
+            <p className="text-xs text-zinc-600">
+              <button
+                type="button"
+                onClick={() => setError("Password reset is coming soon. For now, create a new account or use Discord login.")}
+                className="hover:text-zinc-400 transition-colors"
+              >
+                Forgot password?
+              </button>
+            </p>
+          )}
         </form>
 
         {/* Divider */}

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -51,6 +52,32 @@ const DAY_LABELS = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 ];
 
+const getUser = cache(async (userId: string) => {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      displayName: true,
+      name: true,
+      currentStreak: true,
+      longestStreak: true,
+      totalVolumeLifted: true,
+      lastWorkoutDate: true,
+      unitPreference: true,
+      weeklyStreakTarget: true,
+      createdAt: true,
+    },
+  });
+});
+
+function fmtWeight(kg: number, unit: string): string {
+  const val = unit === "lbs" ? kg * 2.20462 : kg;
+  return `${Math.round(val).toLocaleString()} ${unit}`;
+}
+
+function fmtUnit(unit: string): string {
+  return unit === "lbs" ? "lb" : "kg";
+}
+
 // ── Page ──────────────────────────────────────────────────
 
 export default async function DashboardPage({
@@ -84,21 +111,10 @@ export default async function DashboardPage({
   weekEndLabel.setDate(weekEndLabel.getDate() - 1);
   const weekLabel = `${selectedWeekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
-  // Fetch user
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      displayName: true,
-      name: true,
-      currentStreak: true,
-      longestStreak: true,
-      totalVolumeLifted: true,
-      lastWorkoutDate: true,
-      unitPreference: true,
-      weeklyStreakTarget: true,
-      createdAt: true,
-    },
-  });
+  // Fetch user (cached)
+  const user = await getUser(userId);
+
+  const unit = user?.unitPreference ?? "kg";
 
   const streakTarget = user?.weeklyStreakTarget ?? 3;
 
@@ -396,7 +412,7 @@ export default async function DashboardPage({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatsCard
           label="Weekly Volume"
-          value={`${Math.round(totalWeeklyVolume).toLocaleString()} kg`}
+          value={fmtWeight(Math.round(totalWeeklyVolume), unit)}
           icon={Weight}
           accent="amber"
           tooltip="Total weight lifted this week (weight × reps summed across all exercises). Only counted when both weight and reps are logged."
@@ -542,10 +558,10 @@ export default async function DashboardPage({
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold text-amber-400 tabular-nums">
-                      {pr.weightKg} kg × {pr.reps}
+                      {pr.weightKg} {fmtUnit(unit)} × {pr.reps}
                     </p>
                     <p className="text-[10px] text-emerald-400">
-                      +{Math.round(pr.weightKg - pr.previousBest)} kg
+                      +{Math.round(pr.weightKg - pr.previousBest)} {fmtUnit(unit)}
                     </p>
                   </div>
                 </div>
@@ -580,7 +596,7 @@ export default async function DashboardPage({
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-white tabular-nums shrink-0">
-                    {Math.round(ex.volume).toLocaleString()} kg
+                    {fmtWeight(Math.round(ex.volume), unit)}
                   </span>
                 </div>
               ))}
@@ -611,9 +627,10 @@ export default async function DashboardPage({
                     getDateStr(date) === getDateStr(new Date());
 
                   return (
-                    <div
+                    <Link
                       key={w.id}
-                      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-zinc-800/50 transition-colors"
+                      href={`/dashboard/workouts/${w.id}`}
+                      className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-zinc-800/50 transition-colors block"
                     >
                       <div className="text-center shrink-0 w-10">
                         <p className="text-xs font-medium text-zinc-400">
@@ -637,9 +654,9 @@ export default async function DashboardPage({
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-white tabular-nums shrink-0">
-                        {Math.round(vol).toLocaleString()} kg
+                        {fmtWeight(Math.round(vol), unit)}
                       </span>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

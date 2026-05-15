@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -113,6 +114,7 @@ interface ChallengeItem {
 
 export default function ChallengesPage() {
   const [activeTab, setActiveTab] = useState("active");
+  const { toast } = useToast();
   const [active, setActive] = useState<ChallengeItem[]>([]);
   const [completed, setCompleted] = useState<ChallengeItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,6 +204,7 @@ export default function ChallengesPage() {
       }
 
       setShowCreate(false);
+      toast("Challenge created!", "success");
       setCreateTitle("");
       setCreateDesc("");
       setCreateDays(7);

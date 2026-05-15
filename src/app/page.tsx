@@ -114,7 +114,7 @@ export default function LandingPage() {
               {[
                 { value: "13M+", label: "Hevy users to connect" },
                 { value: "5", label: "Challenge types" },
-                { value: "0€", label: "Start for free" },
+                { value: "Free", label: "Start for free" },
               ].map((stat) => (
                 <div key={stat.label} className="text-center">
                   <p className="text-2xl sm:text-3xl font-black text-white">
@@ -453,12 +453,12 @@ export default function LandingPage() {
               RepWars · Built for lifters, by lifters
             </div>
             <div className="flex items-center gap-6 text-sm text-zinc-600">
-              <a href="#" className="hover:text-zinc-400 transition-colors">
+              <Link href="/privacy" className="hover:text-zinc-400 transition-colors">
                 Privacy
-              </a>
-              <a href="#" className="hover:text-zinc-400 transition-colors">
+              </Link>
+              <Link href="/terms" className="hover:text-zinc-400 transition-colors">
                 Terms
-              </a>
+              </Link>
               <a
                 href="https://github.com/atascg01/repwars"
                 target="_blank"

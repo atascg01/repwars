@@ -18,7 +18,10 @@ import { WorkoutHeatmap } from "@/components/charts/workout-heatmap";
 import { StreakCard } from "@/components/dashboard/streak-card";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { WeekNavInline } from "@/components/charts/week-nav-inline";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { guessMuscleGroup, MUSCLE_COLORS, MUSCLE_LABELS } from "@/lib/muscle-groups";
+import { detectPRs } from "@/services/prDetection";
+import { seedBadges, checkBadges } from "@/services/badgeService";
 import { calcWeeklyStreak, calcLongestWeeklyStreak, calcWeeklyWorkouts } from "@/lib/streaks";
 
 // ── Helpers ───────────────────────────────────────────────
@@ -140,6 +143,9 @@ export default async function DashboardPage({
     include: { exercises: { include: { sets: true } } },
   });
 
+  // ── Recent PRs ──
+  const recentPRs = await detectPRs(userId, 30);
+
   // ── Challenge wins ──
   const challengeWins = await prisma.challengeParticipant.count({
     where: { userId, rank: 1 },
@@ -155,6 +161,32 @@ export default async function DashboardPage({
   const trainingDays = new Set(
     allWorkoutDates.map((w) => w.startTime.toISOString().slice(0, 10)),
   );
+
+  // ── Earned badges ──
+  let earnedBadges: { id: string; badge: { name: string; icon: string; description: string } }[] = [];
+  try {
+    const raw = await prisma.userBadge.findMany({
+      where: { userId },
+      include: { badge: true },
+      orderBy: { earnedAt: "desc" },
+      take: 8,
+    });
+    earnedBadges = raw as typeof earnedBadges;
+
+    // Always seed badges (updates icons/descriptions if changed)
+    // Only run heavy badge check if user has no badges yet
+    await seedBadges();
+    if (raw.length === 0 && allWorkoutDates.length > 0) {
+      await checkBadges(userId);
+      const updated = await prisma.userBadge.findMany({
+        where: { userId },
+        include: { badge: true },
+        orderBy: { earnedAt: "desc" },
+        take: 8,
+      });
+      earnedBadges = updated as typeof earnedBadges;
+    }
+  } catch { /* non-critical */ }
 
   const weeklyStreak = calcWeeklyStreak(trainingDays, streakTarget);
   const longestStreak = Math.max(
@@ -367,37 +399,42 @@ export default async function DashboardPage({
           value={`${Math.round(totalWeeklyVolume).toLocaleString()} kg`}
           icon={Weight}
           accent="amber"
+          tooltip="Total weight lifted this week (weight × reps summed across all exercises). Only counted when both weight and reps are logged."
         />
         <StatsCard
           label="Workouts This Week"
           value={String(totalWeeklyWorkouts)}
           icon={Dumbbell}
           accent="blue"
+          tooltip="Number of distinct workout sessions logged during the selected week."
         />
         <StatsCard
           label="Total Time"
           value={timeStr}
           icon={Clock}
           accent="emerald"
+          tooltip="Estimated training time this week. Calculated from workout start and end times."
         />
         <StatsCard
           label="Challenge Wins"
           value={String(challengeWins)}
           icon={Trophy}
           accent="violet"
+          tooltip="Number of challenges where you placed 1st. Lifetime count across all crews."
         />
       </div>
 
       {/* ── Charts Row ──────────────────────────────────── */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-2 gap-6 items-start">
         {/* Weekly Volume Bar Chart */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 overflow-x-auto">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-amber-400" />
               <h3 className="text-sm font-semibold text-white">
                 Daily Volume
               </h3>
+              <InfoTooltip content="Total weight lifted each day during the selected week. Each bar = one day's worth of weight × reps across all exercises." />
             </div>
             <WeekNavInline
               prevWeek={prevWeek.toISOString().slice(0, 10)}
@@ -412,13 +449,14 @@ export default async function DashboardPage({
         </div>
 
         {/* Muscle Group Donut */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 overflow-x-auto">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-violet-400" />
               <h3 className="text-sm font-semibold text-white">
                 Muscle Groups
               </h3>
+              <InfoTooltip content="How your weekly volume is distributed across muscle groups. Detected automatically from exercise names. Warm-up and stretching excluded." />
             </div>
             <WeekNavInline
               prevWeek={prevWeek.toISOString().slice(0, 10)}
@@ -434,13 +472,14 @@ export default async function DashboardPage({
       </div>
 
       {/* ── Volume Trend ────────────────────────────────── */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 overflow-x-auto">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-blue-400" />
             <h3 className="text-sm font-semibold text-white">
               Volume Trend
             </h3>
+            <InfoTooltip content="Your total weekly volume over the last 4 weeks. Each dot = one week's total. Helps you track if your training load is going up, down, or staying steady." />
           </div>
           <WeekNavInline
             prevWeek={prevWeek.toISOString().slice(0, 10)}
@@ -454,73 +493,110 @@ export default async function DashboardPage({
         <VolumeTrendChart data={weeklyTotals} />
       </div>
 
-      {/* ── Heatmap + Recent Workouts ───────────────────── */}
-      <div className="grid lg:grid-cols-5 gap-6">
-        {/* Heatmap */}
-        <div className="lg:col-span-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div className="flex items-center justify-between mb-1">
+      {/* ── Heatmap ─────────────────────────────────────── */}
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-white">
               🔥 Activity Heatmap
             </h3>
-            <WeekNavInline
-              prevWeek={prevWeek.toISOString().slice(0, 10)}
-              nextWeek={nextWeek.toISOString().slice(0, 10)}
-              isCurrentWeek={isCurrentWeek}
-            />
+            <InfoTooltip content="GitHub-style activity calendar. Each square = one day. Darker orange = more volume. Hover any day to see exact numbers. Navigate weeks with the arrows." />
           </div>
-          <p className="text-xs text-zinc-500 mb-4">
-            {isCurrentWeek
-              ? "Last 12 weeks"
-              : `12 weeks ending ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
-          </p>
-          <WorkoutHeatmap data={heatmapDays} weeks={12} />
+          <WeekNavInline
+            prevWeek={prevWeek.toISOString().slice(0, 10)}
+            nextWeek={nextWeek.toISOString().slice(0, 10)}
+            isCurrentWeek={isCurrentWeek}
+          />
+        </div>
+        <p className="text-xs text-zinc-500 mb-4">
+          {isCurrentWeek
+            ? "Last 12 weeks"
+            : `12 weeks ending ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+        </p>
+        <WorkoutHeatmap data={heatmapDays} weeks={12} />
+      </div>
+
+      {/* ── PRs + Top Exercises + Recent Workouts ────────── */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* PR Timeline */}
+        {recentPRs.length > 0 && (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">🏆</span>
+              <h3 className="text-sm font-semibold text-white">Recent PRs</h3>
+              <InfoTooltip content="Personal records detected by comparing each set against your full workout history for the same exercise and rep range (1-3, 4-6, 7-9, 10-15, 15+)." />
+            </div>
+            <div className="space-y-3">
+              {recentPRs.slice(0, 5).map((pr, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-amber-400 w-5">
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-200 truncate">
+                      {pr.exerciseTitle}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {pr.repRange} reps · {new Date(pr.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-amber-400 tabular-nums">
+                      {pr.weightKg} kg × {pr.reps}
+                    </p>
+                    <p className="text-[10px] text-emerald-400">
+                      +{Math.round(pr.weightKg - pr.previousBest)} kg
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Top Exercises */}
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-4">
+            🏆 Top Exercises
+          </h3>
+          {topExercises.length > 0 ? (
+            <div className="space-y-3">
+              {topExercises.map((ex, i) => (
+                <div key={ex.title} className="flex items-center gap-3">
+                  <span
+                    className={`text-sm font-bold w-5 ${
+                      i === 0
+                        ? "text-amber-400"
+                        : i === 1
+                          ? "text-zinc-400"
+                          : "text-zinc-600"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-300 truncate">
+                      {ex.title}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-white tabular-nums shrink-0">
+                    {Math.round(ex.volume).toLocaleString()} kg
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-600 text-center py-4">
+              No data this week
+            </p>
+          )}
         </div>
 
-        {/* Recent Workouts + Top Exercises */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Top Exercises */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">
-              🏆 Top Exercises
-            </h3>
-            {topExercises.length > 0 ? (
-              <div className="space-y-3">
-                {topExercises.map((ex, i) => (
-                  <div key={ex.title} className="flex items-center gap-3">
-                    <span
-                      className={`text-sm font-bold w-5 ${
-                        i === 0
-                          ? "text-amber-400"
-                          : i === 1
-                            ? "text-zinc-400"
-                            : "text-zinc-600"
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-300 truncate">
-                        {ex.title}
-                      </p>
-                    </div>
-                    <span className="text-sm font-semibold text-white tabular-nums shrink-0">
-                      {Math.round(ex.volume).toLocaleString()} kg
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-600 text-center py-4">
-                No data this week
-              </p>
-            )}
-          </div>
-
-          {/* Recent Workouts */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-            <h3 className="text-sm font-semibold text-white mb-4">
-              📋 Recent Workouts
-            </h3>
+        {/* Recent Workouts */}
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h3 className="text-sm font-semibold text-white mb-4">
+            📋 Recent Workouts
+          </h3>
             {recentWorkouts.length > 0 ? (
               <div className="space-y-2">
                 {recentWorkouts.slice(0, 5).map((w) => {
@@ -582,10 +658,44 @@ export default async function DashboardPage({
               </div>
             )}
           </div>
-        </div>
       </div>
 
       {/* ── Quick Actions ────────────────────────────────── */}
+
+      {/* Badges */}
+      {earnedBadges.length > 0 && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🏅</span>
+              <h3 className="text-sm font-semibold text-white">Badges</h3>
+              <InfoTooltip content="Earned for hitting milestones: streaks, volume, PRs, challenge wins, and more." />
+            </div>
+            <Link
+              href="/dashboard/badges"
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              View all →
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {earnedBadges.map((ub) => (
+              <div
+                key={ub.id}
+                className="relative group flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 hover:border-zinc-700 transition-colors"
+              >
+                <span className="text-base">{ub.badge.icon}</span>
+                <span className="text-xs text-zinc-300">{ub.badge.name}</span>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-30 w-48 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  <p className="text-xs text-zinc-300">{ub.badge.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickAction
           title="Import CSV"

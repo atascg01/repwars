@@ -58,7 +58,7 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
     }
   }
 
-  // Generate month labels for the top
+  // Month labels
   const monthLabels: { label: string; col: number }[] = [];
   const startDate = getStartDate(weeks);
   for (let w = 0; w < weeks; w++) {
@@ -71,7 +71,6 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
     }
   }
 
-  // Count days with data vs total shown
   const daysWithData = data.length;
 
   return (
@@ -89,43 +88,46 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
         </div>
       )}
 
-      {/* Grid */}
+      {/* Heatmap */}
       <div className="overflow-x-auto -mx-1 px-1">
-        <div
-          className="grid gap-[3px] min-w-full"
-          style={{
-            gridTemplateColumns: `32px repeat(${weeks}, 1fr)`,
-          }}
-        >
-          {/* Month labels row */}
-          <div /> {/* empty corner */}
-          {Array.from({ length: weeks }, (_, w) => {
-            const ml = monthLabels.find((m) => m.col === w);
-            return (
-              <div key={`m-${w}`} className="text-[10px] text-zinc-500 pb-1 pt-0.5 truncate">
-                {ml?.label ?? ""}
+        <div className="flex min-w-full">
+          {/* Day labels column */}
+          <div className="shrink-0 w-8">
+            {/* Month header spacer */}
+            <div className="h-4" />
+            {/* Day labels */}
+            {DAY_LABELS.map((label) => (
+              <div
+                key={label}
+                className="h-[14px] flex items-center text-[10px] text-zinc-500 mb-[3px]"
+              >
+                {label}
               </div>
-            );
-          })}
+            ))}
+          </div>
 
-          {/* Day rows */}
-          {DAY_LABELS.map((dayLabel, dayIdx) => (
-            <div key={`row-${dayIdx}`} className="contents">
-              {/* Day label */}
-              <div className="text-[10px] text-zinc-500 flex items-center min-h-[16px]">
-                {dayLabel}
-              </div>
+          {/* Weeks columns */}
+          {Array.from({ length: weeks }, (_, weekIdx) => (
+            <div key={weekIdx} className="flex-1 min-w-[12px] px-[1.5px]">
+              {/* Month label */}
+              {monthLabels.some((m) => m.col === weekIdx) ? (
+                <div className="h-4 text-[10px] text-zinc-500 truncate">
+                  {monthLabels.find((m) => m.col === weekIdx)?.label ?? ""}
+                </div>
+              ) : (
+                <div className="h-4" />
+              )}
 
-              {/* Cells */}
-              {Array.from({ length: weeks }, (_, weekIdx) => {
+              {/* Day cells */}
+              {Array.from({ length: 7 }, (_, dayIdx) => {
                 const cell = grid[dayIdx][weekIdx];
                 const volume = cell?.volume ?? 0;
                 const hasData = volume > 0;
 
                 return (
                   <div
-                    key={`${weekIdx}-${dayIdx}`}
-                    className={`rounded-[3px] transition-colors aspect-square min-h-[16px] ${
+                    key={dayIdx}
+                    className={`h-[14px] w-full rounded-[3px] mb-[3px] transition-colors ${
                       hasData
                         ? `${getIntensity(volume, maxVol)} cursor-pointer hover:ring-[1.5px] hover:ring-white/40`
                         : "bg-zinc-800/25"
@@ -158,7 +160,7 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
       </div>
 
       {/* Caption */}
-      <div className="flex items-center justify-between mt-3">
+      <div className="flex items-center justify-between mt-2">
         <span className="text-[10px] text-zinc-600">
           {daysWithData} training days across {weeks} weeks
         </span>

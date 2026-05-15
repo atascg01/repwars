@@ -55,3 +55,29 @@ export function generateInviteCode(): string {
   }
   return code;
 }
+
+/** Get initials from a display name: "John Doe" → "JD", "Alice" → "AL" */
+export function getInitials(name: string | null | undefined): string {
+  if (!name) return "??";
+  const parts = name.split(" ").filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Human-readable relative time: "just now", "5m ago", "3h ago", "2d ago" */
+export function getRelativeTime(date: Date | string): string {
+  const now = Date.now();
+  const diff = now - new Date(date).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}

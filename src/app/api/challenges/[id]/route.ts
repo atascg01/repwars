@@ -24,6 +24,7 @@ export async function GET(
             select: {
               id: true,
               displayName: true,
+              name: true,
               image: true,
               totalVolumeLifted: true,
               currentStreak: true,
@@ -53,8 +54,8 @@ export async function GET(
 
     leaderboard.push({
       rank: p.rank,
-      name: p.user.displayName ?? "Unknown",
-      initials: getInitials(p.user.displayName),
+      name: p.user.displayName ?? p.user.name ?? "Unknown",
+      initials: getInitials(p.user.displayName ?? p.user.name),
       score: p.score,
       workouts: workoutCount,
       avatar: p.user.image,

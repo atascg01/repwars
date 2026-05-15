@@ -141,6 +141,34 @@ export default function ChallengeDetailPage({
     fetchChallenge();
   }, [id]);
 
+  // Auto-score challenge if participants have no scores yet
+  const [scoring, setScoring] = useState(false);
+  const handleScore = async () => {
+    setScoring(true);
+    try {
+      await fetch(`/api/challenges/score?challengeId=${id}`, { method: "POST" });
+      // Refetch to get updated scores
+      const res = await fetch(`/api/challenges/${id}`);
+      if (res.ok) setChallenge(await res.json());
+    } catch {
+      // ignore
+    } finally {
+      setScoring(false);
+    }
+  };
+
+  // Auto-score on first load if needed
+  useEffect(() => {
+    if (
+      challenge &&
+      challenge.leaderboard.length > 0 &&
+      challenge.leaderboard.every((p) => p.score === 0) &&
+      !scoring
+    ) {
+      handleScore();
+    }
+  }, [challenge]);
+
   if (loading) {
     return (
       <main className="flex-1 p-4 md:p-8 flex justify-center items-center py-24">

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { BadgeCategory } from "@prisma/client";
+import { calcWeeklyStreak } from "@/lib/streaks";
 
 const BADGE_DEFINITIONS = [
   // ── Streak Badges ────────────────────────────
@@ -9,7 +9,7 @@ const BADGE_DEFINITIONS = [
   { name: "Year of the Beast", description: "365-day workout streak", icon: "👑🔥", category: "STREAK" as const, requirement: "streak:365" },
 
   // ── Volume Badges ────────────────────────────
-  { name: "One Ton", description: "Lifted 1,000 kg total", icon: "🪨", category: "VOLUME" as const, requirement: "volume:1000" },
+  { name: "One Ton", description: "Lifted 1,000 kg total", icon: "💪", category: "VOLUME" as const, requirement: "volume:1000" },
   { name: "Ten Tons", description: "Lifted 10,000 kg total", icon: "🏗️", category: "VOLUME" as const, requirement: "volume:10000" },
   { name: "Hundred Tons", description: "Lifted 100,000 kg total", icon: "🚢", category: "VOLUME" as const, requirement: "volume:100000" },
   { name: "Megaton", description: "Lifted 1,000,000 kg total", icon: "🌋", category: "VOLUME" as const, requirement: "volume:1000000" },
@@ -46,7 +46,7 @@ export async function seedBadges() {
     await prisma.badge.upsert({
       where: { name: badge.name },
       create: badge,
-      update: {},
+      update: { icon: badge.icon, description: badge.description, category: badge.category },
     });
   }
 }
@@ -60,7 +60,6 @@ export async function checkBadges(userId: string) {
     where: { id: userId },
     include: {
       userBadges: { include: { badge: true } },
-      workouts: { include: { exercises: { include: { sets: true } } } },
     },
   });
   if (!user) return [];
@@ -68,20 +67,42 @@ export async function checkBadges(userId: string) {
   const existingBadgeNames = new Set(user.userBadges.map((ub) => ub.badge.name));
   const newBadges: string[] = [];
 
+  // Compute real stats from workouts
+  const allWorkouts = await prisma.workout.findMany({
+    where: { userId },
+    select: {
+      startTime: true,
+      exercises: { select: { sets: true } },
+    },
+  });
+
+  const trainingDays = new Set(
+    allWorkouts.map((w) => w.startTime.toISOString().slice(0, 10)),
+  );
+
+  let totalVolume = 0;
+  for (const w of allWorkouts) {
+    for (const e of w.exercises) {
+      for (const s of e.sets) {
+        if (s.weightKg && s.reps) totalVolume += s.weightKg * s.reps;
+      }
+    }
+  }
+
+  const weeklyStreak = trainingDays.size > 0 ? calcWeeklyStreak(trainingDays) : 0;
+
   // ── Streak checks ────────────────────────────
   const streakBadges = [
-    { name: "First Week", threshold: 7 },
-    { name: "Monthly Grinder", threshold: 30 },
-    { name: "Unstoppable", threshold: 90 },
-    { name: "Year of the Beast", threshold: 365 },
+    { name: "First Week", threshold: 4 },    // 4 weeks ≈ 1 month
+    { name: "Monthly Grinder", threshold: 8 }, // 8 weeks ≈ 2 months
+    { name: "Unstoppable", threshold: 26 },   // 26 weeks ≈ 6 months
+    { name: "Year of the Beast", threshold: 52 }, // 52 weeks = 1 year
   ];
 
-  if (user.currentStreak > 0) {
-    for (const sb of streakBadges) {
-      if (user.currentStreak >= sb.threshold && !existingBadgeNames.has(sb.name)) {
-        await awardBadge(userId, sb.name);
-        newBadges.push(sb.name);
-      }
+  for (const sb of streakBadges) {
+    if (weeklyStreak >= sb.threshold && !existingBadgeNames.has(sb.name)) {
+      await awardBadge(userId, sb.name);
+      newBadges.push(sb.name);
     }
   }
 
@@ -94,7 +115,7 @@ export async function checkBadges(userId: string) {
   ];
 
   for (const vb of volumeBadges) {
-    if (user.totalVolumeLifted >= vb.threshold && !existingBadgeNames.has(vb.name)) {
+    if (totalVolume >= vb.threshold && !existingBadgeNames.has(vb.name)) {
       await awardBadge(userId, vb.name);
       newBadges.push(vb.name);
     }

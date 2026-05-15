@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { seedBadges, checkBadges } from "./badgeService";
 
 const HEVY_API_BASE = "https://api.hevyapp.com/v1";
 const PAGE_SIZE = 10;
@@ -178,6 +179,14 @@ export async function syncHevyWorkouts(
         lastWorkoutDate: new Date(latestWorkout.end_time),
       },
     });
+
+    // Seed badges (idempotent) and check for new badges
+    try {
+      await seedBadges();
+      await checkBadges(userId);
+    } catch (err) {
+      console.error("Badge check failed:", err);
+    }
   }
 
   return { imported, skipped };

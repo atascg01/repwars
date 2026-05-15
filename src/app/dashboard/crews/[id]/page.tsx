@@ -637,7 +637,12 @@ export default function CrewPage({
                 <p className="text-sm text-zinc-500 mb-4">
                   No active challenges. Start one!
                 </p>
-                <Button size="sm">New Challenge</Button>
+                <Link
+                  href="/dashboard/challenges"
+                  className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200 transition-colors"
+                >
+                  New Challenge
+                </Link>
               </div>
             )}
           </div>

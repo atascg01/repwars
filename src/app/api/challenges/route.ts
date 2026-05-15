@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { getInitials } from "@/lib/utils";
 
 /** GET /api/challenges — List challenges across all crews user is in */
 export async function GET() {
@@ -167,12 +168,4 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ challenge }, { status: 201 });
-}
-
-function getInitials(name: string | null | undefined): string {
-  if (!name) return "??";
-  const parts = name.split(" ").filter(Boolean);
-  if (parts.length === 0) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }

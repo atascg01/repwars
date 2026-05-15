@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { parseHevyCsv } from "@/services/csvParser";
+import { seedBadges, checkBadges } from "@/services/badgeService";
 
 /**
  * POST /api/import/csv
@@ -85,6 +86,16 @@ export async function POST(req: NextRequest) {
     });
 
     imported++;
+  }
+
+  // Check badges after import
+  if (imported > 0) {
+    try {
+      await seedBadges();
+      await checkBadges(session.user.id);
+    } catch (err) {
+      console.error("Badge check failed:", err);
+    }
   }
 
   return NextResponse.json({

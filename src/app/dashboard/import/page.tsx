@@ -289,16 +289,15 @@ export default function ImportPage() {
 
                     <div className="bg-zinc-900 rounded-lg p-4 text-xs text-zinc-500 space-y-2">
                       <p className="font-medium text-zinc-400 mb-2">
-                        How to get your API key:
+                        Cómo conseguir tu API Key:
                       </p>
                       <ol className="list-decimal list-inside space-y-1.5">
-                        <li>Open Hevy app → Profile tab</li>
-                        <li>Tap Settings → Developer API</li>
-                        <li>Generate API Key</li>
-                        <li>Copy and paste it here</li>
+                        <li>Ve a <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">hevy.com/settings?developer</a></li>
+                        <li>Haz clic en Generate API Key</li>
+                        <li>Copia y pega la key aquí</li>
                       </ol>
                       <p className="pt-2 text-zinc-600">
-                        💡 Hevy Pro subscription required ($2.99/month)
+                        💡 Necesitas Hevy Pro (2,99€/mes). También puedes generarla desde la app: Ajustes → Developer API
                       </p>
                     </div>
 

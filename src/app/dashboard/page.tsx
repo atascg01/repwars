@@ -69,7 +69,8 @@ export default async function DashboardPage() {
     },
   });
 
-  const displayName = user?.displayName ?? user?.name ?? "Athlete";
+  const displayName =
+    user?.displayName ?? user?.name ?? session.user?.name ?? "Athlete";
 
   // Date ranges
   const weekStart = getMonday();
@@ -107,6 +108,80 @@ export default async function DashboardPage() {
   const challengeWins = await prisma.challengeParticipant.count({
     where: { userId, rank: 1 },
   });
+
+  // ── Streak calculation ─────────────────────────────────
+  const allWorkoutDates = await prisma.workout.findMany({
+    where: { userId },
+    select: { startTime: true },
+    orderBy: { startTime: "desc" },
+  });
+
+  const trainingDays = new Set(
+    allWorkoutDates.map((w) => w.startTime.toISOString().slice(0, 10)),
+  );
+
+  function calcCurrentStreak(): number {
+    let streak = 0;
+    const today = getDateStr(new Date());
+    const yesterday = getDateStr(new Date(Date.now() - 86400000));
+
+    // Start from today or yesterday (whichever has a workout or is closest)
+    let check = new Date();
+    // If no workout today AND no workout yesterday, find the most recent day
+    if (!trainingDays.has(today) && !trainingDays.has(yesterday)) {
+      // Find the most recent training day
+      const sorted = [...trainingDays].sort().reverse();
+      if (sorted.length === 0) return 0;
+      const mostRecent = new Date(sorted[0] + "T12:00:00");
+      const diffDays = Math.floor(
+        (Date.now() - mostRecent.getTime()) / 86400000,
+      );
+      if (diffDays > 1) return 0; // gap > 1 day = streak broken
+      check = mostRecent;
+    }
+
+    while (true) {
+      const checkStr = getDateStr(check);
+      if (trainingDays.has(checkStr)) {
+        streak++;
+        check.setDate(check.getDate() - 1);
+      } else if (streak === 0) {
+        check.setDate(check.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  function calcLongestStreak(): number {
+    const sorted = [...trainingDays].sort();
+    if (sorted.length === 0) return 0;
+
+    let longest = 0;
+    let current = 1;
+    let prev = new Date(sorted[0] + "T12:00:00");
+
+    for (let i = 1; i < sorted.length; i++) {
+      const curr = new Date(sorted[i] + "T12:00:00");
+      const diffDays =
+        (curr.getTime() - prev.getTime()) / 86400000;
+      if (diffDays === 1) {
+        current++;
+      } else {
+        longest = Math.max(longest, current);
+        current = 1;
+      }
+      prev = curr;
+    }
+    return Math.max(longest, current);
+  }
+
+  const currentStreak = calcCurrentStreak();
+  const longestStreak = Math.max(
+    calcLongestStreak(),
+    user?.longestStreak ?? 0,
+  );
 
   // ── Compute weekly volume per day ──────────────────────
   const dailyVolume: Record<string, number> = {};
@@ -277,8 +352,8 @@ export default async function DashboardPage() {
 
       {/* ── Streak Card ─────────────────────────────────── */}
       <StreakCard
-        currentStreak={user?.currentStreak ?? 0}
-        longestStreak={user?.longestStreak ?? 0}
+        currentStreak={currentStreak}
+        longestStreak={longestStreak}
         workoutsThisWeek={totalWeeklyWorkouts}
         targetDays={4}
       />

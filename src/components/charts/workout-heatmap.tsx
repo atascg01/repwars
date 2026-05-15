@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 interface HeatmapDay {
   date: string;
   volume: number;
@@ -11,30 +13,43 @@ interface WorkoutHeatmapProps {
 }
 
 function getIntensity(volume: number, max: number): string {
-  if (volume === 0) return "bg-zinc-800/50";
+  if (volume === 0) return "bg-zinc-800/40";
   const ratio = volume / max;
-  if (ratio > 0.75) return "bg-amber-500/80";
-  if (ratio > 0.5) return "bg-amber-500/50";
-  if (ratio > 0.25) return "bg-amber-500/30";
+  if (ratio > 0.75) return "bg-amber-500";
+  if (ratio > 0.5) return "bg-amber-500/65";
+  if (ratio > 0.25) return "bg-amber-500/35";
   return "bg-amber-500/15";
 }
 
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
   const maxVol = Math.max(...data.map((d) => d.volume), 1);
+  const [hovered, setHovered] = useState<{
+    date: string;
+    volume: number;
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  // Build grid: rows = days of week (Mon-Sun), cols = weeks
-  const days = ["", "L", "", "X", "", "V", ""]; // Mon through Sun labels
-  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-  // Organize data into a grid[dayOfWeek][weekIndex]
+  // Build grid[dayIdx][weekIdx]
   const grid: (HeatmapDay | null)[][] = Array.from({ length: 7 }, () =>
     Array(weeks).fill(null),
   );
 
   for (const d of data) {
     const date = new Date(d.date);
-    const dayOfWeek = (date.getDay() + 6) % 7; // Mon=0, Sun=6
-    // Find which week this belongs to
+    const dayOfWeek = (date.getDay() + 6) % 7;
     const weekIndex = Math.floor(
       (date.getTime() - getStartDate(weeks).getTime()) / (7 * 86400000),
     );
@@ -43,41 +58,119 @@ export function WorkoutHeatmap({ data, weeks }: WorkoutHeatmapProps) {
     }
   }
 
+  // Generate month labels for the top
+  const monthLabels: { label: string; col: number }[] = [];
+  const startDate = getStartDate(weeks);
+  for (let w = 0; w < weeks; w++) {
+    const monday = new Date(startDate);
+    monday.setDate(monday.getDate() + w * 7);
+    const monthName = monday.toLocaleDateString("en-US", { month: "short" });
+    const prev = monthLabels[monthLabels.length - 1];
+    if (!prev || prev.label !== monthName) {
+      monthLabels.push({ label: monthName, col: w });
+    }
+  }
+
+  // Count days with data vs total shown
+  const daysWithData = data.length;
+
   return (
-    <div className="overflow-x-auto">
-      <div className="inline-flex gap-0.5 min-w-max">
-        {/* Day labels */}
-        <div className="flex flex-col gap-0.5 mr-1.5 justify-between py-0.5">
-          {dayLabels.map((label, i) => (
-            <div
-              key={i}
-              className="h-3 w-6 flex items-center text-[9px] text-zinc-600"
-            >
-              {["Mon", "Wed", "Fri"].includes(label) ? label : ""}
+    <div className="relative">
+      {/* Tooltip */}
+      {hovered && (
+        <div
+          className="fixed z-30 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 shadow-xl pointer-events-none whitespace-nowrap"
+          style={{ left: hovered.x + 10, top: hovered.y - 4 }}
+        >
+          <p className="text-[11px] font-medium text-white">{hovered.label}</p>
+          <p className="text-xs text-zinc-400 tabular-nums">
+            {hovered.volume.toLocaleString()} kg
+          </p>
+        </div>
+      )}
+
+      {/* Grid */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div
+          className="grid gap-[3px] min-w-full"
+          style={{
+            gridTemplateColumns: `32px repeat(${weeks}, 1fr)`,
+          }}
+        >
+          {/* Month labels row */}
+          <div /> {/* empty corner */}
+          {Array.from({ length: weeks }, (_, w) => {
+            const ml = monthLabels.find((m) => m.col === w);
+            return (
+              <div key={`m-${w}`} className="text-[10px] text-zinc-500 pb-1 pt-0.5 truncate">
+                {ml?.label ?? ""}
+              </div>
+            );
+          })}
+
+          {/* Day rows */}
+          {DAY_LABELS.map((dayLabel, dayIdx) => (
+            <div key={`row-${dayIdx}`} className="contents">
+              {/* Day label */}
+              <div className="text-[10px] text-zinc-500 flex items-center min-h-[16px]">
+                {dayLabel}
+              </div>
+
+              {/* Cells */}
+              {Array.from({ length: weeks }, (_, weekIdx) => {
+                const cell = grid[dayIdx][weekIdx];
+                const volume = cell?.volume ?? 0;
+                const hasData = volume > 0;
+
+                return (
+                  <div
+                    key={`${weekIdx}-${dayIdx}`}
+                    className={`rounded-[3px] transition-colors aspect-square min-h-[16px] ${
+                      hasData
+                        ? `${getIntensity(volume, maxVol)} cursor-pointer hover:ring-[1.5px] hover:ring-white/40`
+                        : "bg-zinc-800/25"
+                    }`}
+                    onMouseEnter={(e) => {
+                      if (hasData && cell) {
+                        setHovered({
+                          date: cell.date,
+                          volume: cell.volume,
+                          label: formatDate(cell.date),
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
+                      }
+                    }}
+                    onMouseMove={(e) => {
+                      if (hovered) {
+                        setHovered((prev) =>
+                          prev ? { ...prev, x: e.clientX, y: e.clientY } : null,
+                        );
+                      }
+                    }}
+                    onMouseLeave={() => setHovered(null)}
+                  />
+                );
+              })}
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Heatmap cells */}
-        {Array.from({ length: weeks }, (_, weekIdx) => (
-          <div key={weekIdx} className="flex flex-col gap-0.5">
-            {Array.from({ length: 7 }, (_, dayIdx) => {
-              const cell = grid[dayIdx][weekIdx];
-              const volume = cell?.volume ?? 0;
-              return (
-                <div
-                  key={dayIdx}
-                  className={`h-3 w-3 rounded-sm ${getIntensity(volume, maxVol)}`}
-                  title={
-                    cell
-                      ? `${cell.date}: ${cell.volume.toLocaleString()} kg`
-                      : ""
-                  }
-                />
-              );
-            })}
-          </div>
-        ))}
+      {/* Caption */}
+      <div className="flex items-center justify-between mt-3">
+        <span className="text-[10px] text-zinc-600">
+          {daysWithData} training days across {weeks} weeks
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-zinc-600">Less</span>
+          <div className="h-3 w-3 rounded-[2px] bg-zinc-800/25" />
+          <div className="h-3 w-3 rounded-[2px] bg-amber-500/15" />
+          <div className="h-3 w-3 rounded-[2px] bg-amber-500/35" />
+          <div className="h-3 w-3 rounded-[2px] bg-amber-500/65" />
+          <div className="h-3 w-3 rounded-[2px] bg-amber-500" />
+          <span className="text-[10px] text-zinc-600">More</span>
+        </div>
       </div>
     </div>
   );

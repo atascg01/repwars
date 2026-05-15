@@ -2,7 +2,9 @@
 
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,6 +27,11 @@ import {
   Globe,
   Lock,
   Shield,
+  Check,
+  Copy,
+  Trash2,
+  Pencil,
+  LogOut,
 } from "lucide-react";
 
 // ── Types ──
@@ -120,10 +127,23 @@ export default function CrewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const [crew, setCrew] = useState<CrewDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("feed");
+
+  // Settings state
+  const [showSettings, setShowSettings] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editPrivacy, setEditPrivacy] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchCrew = async () => {
@@ -144,6 +164,69 @@ export default function CrewPage({
     };
     fetchCrew();
   }, [id]);
+
+  const handleCopyInvite = () => {
+    if (!crew) return;
+    navigator.clipboard.writeText(crew.inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openEdit = () => {
+    if (!crew) return;
+    setEditName(crew.name);
+    setEditDesc(crew.description ?? "");
+    setEditPrivacy(crew.privacy);
+    setEditError("");
+    setShowSettings(false);
+    setShowEdit(true);
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim()) return;
+    setEditLoading(true);
+    setEditError("");
+
+    try {
+      const res = await fetch(`/api/crews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDesc.trim() || "",
+          privacy: editPrivacy,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(data.error ?? "Failed to update");
+        return;
+      }
+
+      setShowEdit(false);
+      // Refetch crew data
+      const refetch = await fetch(`/api/crews/${id}`);
+      if (refetch.ok) setCrew(await refetch.json());
+    } catch {
+      setEditError("Network error");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/crews/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/dashboard/crews");
+      }
+    } catch {
+      setDeleteLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -214,18 +297,65 @@ export default function CrewPage({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Invite */}
             <Button
               variant="outline"
               size="sm"
               className="gap-2"
-              onClick={() => navigator.clipboard.writeText(crew.inviteCode)}
+              onClick={handleCopyInvite}
             >
-              <Share2 className="h-4 w-4" />
-              Invite
+              {copied ? (
+                <Check className="h-4 w-4 text-emerald-400" />
+              ) : (
+                <Share2 className="h-4 w-4" />
+              )}
+              {copied ? "Copied!" : "Invite"}
             </Button>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Settings className="h-4 w-4" />
-            </Button>
+
+            {/* Settings */}
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setShowSettings(!showSettings)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+
+              {showSettings && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowSettings(false)}
+                  />
+                  <div className="absolute right-0 top-10 w-48 rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl z-20 py-1">
+                    <button
+                      onClick={openEdit}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit Crew
+                    </button>
+                    {crew.myRole === "OWNER" && (
+                      <>
+                        <div className="h-px bg-zinc-800 mx-2 my-1" />
+                        <button
+                          onClick={() => {
+                            setShowSettings(false);
+                            setShowDelete(true);
+                          }}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Crew
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -437,7 +567,7 @@ export default function CrewPage({
                   <div className="flex items-center gap-3 text-xs text-zinc-500 mt-0.5">
                     <span className="flex items-center gap-1">
                       <Flame className="h-3 w-3 text-orange-400" />
-                      {member.streak} day streak
+                      {member.streak} week streak
                     </span>
                     <span>
                       {member.volume.toLocaleString()} kg lifetime
@@ -572,6 +702,121 @@ export default function CrewPage({
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Crew Dialog */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEdit(false)} />
+          <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+            <h2 className="text-lg font-bold mb-4">Edit Crew</h2>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Name</label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1.5"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  Description <span className="text-zinc-500">(optional)</span>
+                </label>
+                <Input
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Privacy</label>
+                <div className="grid grid-cols-3 gap-2 mt-1.5">
+                  {[
+                    { value: "PUBLIC", icon: Globe, label: "Public" },
+                    { value: "INVITE_ONLY", icon: Lock, label: "Invite Only" },
+                    { value: "PRIVATE", icon: Shield, label: "Private" },
+                  ].map(({ value, icon: Icon, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setEditPrivacy(value)}
+                      className={`flex flex-col items-center gap-1 rounded-lg border p-2.5 text-xs transition-colors ${
+                        editPrivacy === value
+                          ? "border-amber-500 bg-amber-500/10 text-amber-400"
+                          : "border-zinc-800 hover:border-zinc-600 text-zinc-400"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {editError && (
+                <p className="text-sm text-red-400">{editError}</p>
+              )}
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowEdit(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={editLoading || !editName.trim()}
+                >
+                  {editLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDelete(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl border border-red-500/20 bg-zinc-950 p-6 shadow-2xl text-center">
+            <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="h-6 w-6 text-red-400" />
+            </div>
+            <h2 className="text-lg font-bold mb-2">Delete Crew?</h2>
+            <p className="text-sm text-zinc-400 mb-6">
+              This will permanently delete <strong className="text-white">{crew.name}</strong> and all its challenges and data. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowDelete(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+              >
+                {deleteLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Delete Forever"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

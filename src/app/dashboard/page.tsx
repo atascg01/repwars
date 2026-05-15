@@ -17,6 +17,7 @@ import { VolumeTrendChart } from "@/components/charts/volume-trend-chart";
 import { WorkoutHeatmap } from "@/components/charts/workout-heatmap";
 import { StreakCard } from "@/components/dashboard/streak-card";
 import { StatsCard } from "@/components/dashboard/stats-card";
+import { WeekNavInline } from "@/components/charts/week-nav-inline";
 import { guessMuscleGroup, MUSCLE_COLORS, MUSCLE_LABELS } from "@/lib/muscle-groups";
 import { calcWeeklyStreak, calcLongestWeeklyStreak, calcWeeklyWorkouts } from "@/lib/streaks";
 
@@ -49,11 +50,36 @@ const DAY_LABELS = [
 
 // ── Page ──────────────────────────────────────────────────
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>;
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
   const userId = session.user.id;
+  const { week: weekParam } = await searchParams;
+
+  // Parse selected week (YYYY-MM-DD = any day in the target week, defaults to today)
+  const selectedWeekStart = weekParam
+    ? getMonday(new Date(weekParam + "T12:00:00"))
+    : getMonday();
+  const selectedWeekEnd = new Date(selectedWeekStart);
+  selectedWeekEnd.setDate(selectedWeekEnd.getDate() + 7);
+
+  // For prev/next navigation
+  const prevWeek = new Date(selectedWeekStart);
+  prevWeek.setDate(prevWeek.getDate() - 7);
+  const nextWeek = new Date(selectedWeekStart);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const isCurrentWeek =
+    getDateStr(selectedWeekStart) === getDateStr(getMonday());
+
+  // Week label (e.g. "May 11 – 17, 2026")
+  const weekEndLabel = new Date(selectedWeekEnd);
+  weekEndLabel.setDate(weekEndLabel.getDate() - 1);
+  const weekLabel = `${selectedWeekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
   // Fetch user
   const user = await prisma.user.findUnique({
@@ -76,27 +102,33 @@ export default async function DashboardPage() {
   const displayName =
     user?.displayName ?? user?.name ?? session.user?.name ?? "Athlete";
 
-  // Date ranges
-  const weekStart = getMonday();
-  const fourWeeksAgo = daysAgo(28);
-  const twelveWeeksAgo = daysAgo(84);
+  // Date ranges based on selected week
+  const weekStart = selectedWeekStart;
+  const fourWeeksAgo = new Date(weekStart);
+  fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 21); // 3 weeks back from start
+  const heatmapStart = new Date(weekStart);
+  heatmapStart.setDate(heatmapStart.getDate() - 11 * 7); // 11 weeks back
 
-  // ── This week's workouts ──
+  // Trend: 4 weeks ending with the selected week
+  const trendStart = new Date(weekStart);
+  trendStart.setDate(trendStart.getDate() - 21);
+
+  // ── This week's workouts (selected week) ──
   const weekWorkouts = await prisma.workout.findMany({
-    where: { userId, startTime: { gte: weekStart } },
+    where: { userId, startTime: { gte: weekStart, lt: selectedWeekEnd } },
     include: { exercises: { include: { sets: true } } },
     orderBy: { startTime: "desc" },
   });
 
-  // ── Previous 4 weeks for trend ──
+  // ── 4 weeks (selected + 3 prior) for trend ──
   const monthWorkouts = await prisma.workout.findMany({
-    where: { userId, startTime: { gte: fourWeeksAgo } },
+    where: { userId, startTime: { gte: trendStart, lt: selectedWeekEnd } },
     include: { exercises: { include: { sets: true } } },
   });
 
-  // ── Last 12 weeks for heatmap ──
+  // ── 12 weeks for heatmap (selected + 11 prior) ──
   const heatmapWorkouts = await prisma.workout.findMany({
-    where: { userId, startTime: { gte: twelveWeeksAgo } },
+    where: { userId, startTime: { gte: heatmapStart, lt: selectedWeekEnd } },
     include: { exercises: { include: { sets: true } } },
   });
 
@@ -282,13 +314,42 @@ export default async function DashboardPage() {
           </h1>
           <p className="text-sm text-zinc-500 mt-0.5">Your command center</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {daysSinceJoin !== null && (
             <span className="text-xs text-zinc-600 hidden sm:block">
               Member for {daysSinceJoin} days
             </span>
           )}
         </div>
+      </div>
+
+      {/* Week Navigator */}
+      <div className="flex items-center justify-between gap-3">
+        <a
+          href={`/dashboard?week=${prevWeek.toISOString().slice(0, 10)}`}
+          className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
+        >
+          ← Prev
+        </a>
+        <span className="text-sm font-medium text-zinc-300">{weekLabel}</span>
+        {isCurrentWeek ? (
+          <span className="text-sm text-zinc-600 px-2 py-1">Next →</span>
+        ) : (
+          <a
+            href={`/dashboard?week=${nextWeek.toISOString().slice(0, 10)}`}
+            className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800/50"
+          >
+            Next →
+          </a>
+        )}
+        {!isCurrentWeek && (
+          <a
+            href="/dashboard"
+            className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            Today
+          </a>
+        )}
       </div>
 
       {/* ── Streak Card ─────────────────────────────────── */}
@@ -331,26 +392,42 @@ export default async function DashboardPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Weekly Volume Bar Chart */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart3 className="h-4 w-4 text-amber-400" />
-            <h3 className="text-sm font-semibold text-white">
-              Daily Volume
-            </h3>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-amber-400" />
+              <h3 className="text-sm font-semibold text-white">
+                Daily Volume
+              </h3>
+            </div>
+            <WeekNavInline
+              prevWeek={prevWeek.toISOString().slice(0, 10)}
+              nextWeek={nextWeek.toISOString().slice(0, 10)}
+              isCurrentWeek={isCurrentWeek}
+            />
           </div>
-          <p className="text-xs text-zinc-500 mb-4">This week</p>
+          <p className="text-xs text-zinc-500 mb-4">
+            {isCurrentWeek ? "This week" : weekLabel}
+          </p>
           <WeeklyVolumeChart data={weeklyBarData} />
         </div>
 
         {/* Muscle Group Donut */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Target className="h-4 w-4 text-violet-400" />
-            <h3 className="text-sm font-semibold text-white">
-              Muscle Groups
-            </h3>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-violet-400" />
+              <h3 className="text-sm font-semibold text-white">
+                Muscle Groups
+              </h3>
+            </div>
+            <WeekNavInline
+              prevWeek={prevWeek.toISOString().slice(0, 10)}
+              nextWeek={nextWeek.toISOString().slice(0, 10)}
+              isCurrentWeek={isCurrentWeek}
+            />
           </div>
           <p className="text-xs text-zinc-500 mb-4">
-            Weekly volume breakdown
+            {isCurrentWeek ? "Weekly volume breakdown" : weekLabel}
           </p>
           <MuscleGroupDonut data={donutData} />
         </div>
@@ -358,13 +435,22 @@ export default async function DashboardPage() {
 
       {/* ── Volume Trend ────────────────────────────────── */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="h-4 w-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-white">
-            Volume Trend
-          </h3>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-blue-400" />
+            <h3 className="text-sm font-semibold text-white">
+              Volume Trend
+            </h3>
+          </div>
+          <WeekNavInline
+            prevWeek={prevWeek.toISOString().slice(0, 10)}
+            nextWeek={nextWeek.toISOString().slice(0, 10)}
+            isCurrentWeek={isCurrentWeek}
+          />
         </div>
-        <p className="text-xs text-zinc-500 mb-4">Last 4 weeks</p>
+        <p className="text-xs text-zinc-500 mb-4">
+          {isCurrentWeek ? "Last 4 weeks" : `4 weeks ending ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+        </p>
         <VolumeTrendChart data={weeklyTotals} />
       </div>
 
@@ -372,20 +458,22 @@ export default async function DashboardPage() {
       <div className="grid lg:grid-cols-5 gap-6">
         {/* Heatmap */}
         <div className="lg:col-span-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <h3 className="text-sm font-semibold text-white mb-1">
-            🔥 Activity Heatmap
-          </h3>
-          <p className="text-xs text-zinc-500 mb-4">Last 12 weeks</p>
-          <WorkoutHeatmap data={heatmapDays} weeks={12} />
-          <div className="flex items-center gap-2 mt-4 justify-end">
-            <span className="text-[10px] text-zinc-600">Less</span>
-            <div className="h-3 w-3 rounded-sm bg-zinc-800/50" />
-            <div className="h-3 w-3 rounded-sm bg-amber-500/15" />
-            <div className="h-3 w-3 rounded-sm bg-amber-500/30" />
-            <div className="h-3 w-3 rounded-sm bg-amber-500/50" />
-            <div className="h-3 w-3 rounded-sm bg-amber-500/80" />
-            <span className="text-[10px] text-zinc-600">More</span>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-white">
+              🔥 Activity Heatmap
+            </h3>
+            <WeekNavInline
+              prevWeek={prevWeek.toISOString().slice(0, 10)}
+              nextWeek={nextWeek.toISOString().slice(0, 10)}
+              isCurrentWeek={isCurrentWeek}
+            />
           </div>
+          <p className="text-xs text-zinc-500 mb-4">
+            {isCurrentWeek
+              ? "Last 12 weeks"
+              : `12 weeks ending ${weekEndLabel.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+          </p>
+          <WorkoutHeatmap data={heatmapDays} weeks={12} />
         </div>
 
         {/* Recent Workouts + Top Exercises */}

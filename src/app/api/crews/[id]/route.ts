@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { calcWeeklyStreak } from "@/lib/streaks";
 import { NextRequest, NextResponse } from "next/server";
 
 /** GET /api/crews/[id] — Get crew detail with members, challenges, and feed */
@@ -39,8 +40,6 @@ export async function GET(
               displayName: true,
               name: true,
               image: true,
-              currentStreak: true,
-              totalVolumeLifted: true,
             },
           },
         },
@@ -67,20 +66,45 @@ export async function GET(
     return NextResponse.json({ error: "Crew not found" }, { status: 404 });
   }
 
-  // Build members array
+  // Build members array — compute volume & streak from actual workouts
+  const memberIds = crew.members.map((m) => m.user.id);
+
+  // Fetch all workouts for all members in one batch
+  const allMemberWorkouts = await prisma.workout.findMany({
+    where: { userId: { in: memberIds } },
+    select: {
+      userId: true,
+      startTime: true,
+      exercises: { select: { sets: true } },
+    },
+  });
+
+  // Group by userId
+  const byUser: Record<string, { dates: Set<string>; volume: number }> = {};
+  for (const w of allMemberWorkouts) {
+    if (!byUser[w.userId]) {
+      byUser[w.userId] = { dates: new Set(), volume: 0 };
+    }
+    const u = byUser[w.userId];
+    u.dates.add(w.startTime.toISOString().slice(0, 10));
+    for (const e of w.exercises) {
+      for (const s of e.sets) {
+        if (s.weightKg && s.reps) u.volume += s.weightKg * s.reps;
+      }
+    }
+  }
+
   const members = [];
   for (const m of crew.members) {
-    const workoutCount = await prisma.workout.count({
-      where: { userId: m.user.id },
-    });
+    const data = byUser[m.user.id] ?? { dates: new Set<string>(), volume: 0 };
 
     members.push({
       name: m.user.displayName ?? m.user.name ?? "Unknown",
       initials: getInitials(m.user.displayName ?? m.user.name),
       role: m.role,
-      streak: m.user.currentStreak,
-      volume: m.user.totalVolumeLifted,
-      workouts: workoutCount,
+      streak: calcWeeklyStreak(data.dates),
+      volume: Math.round(data.volume),
+      workouts: data.dates.size,
       avatar: m.user.image,
     });
   }
@@ -142,7 +166,7 @@ export async function GET(
   }
 
   // Build feed from recent crew activity
-  const memberIds = crew.members.map((m) => m.user.id);
+  const uidSet = new Set(memberIds);
 
   const recentWorkouts = await prisma.workout.findMany({
     where: {
@@ -273,6 +297,87 @@ export async function GET(
 }
 
 // ── Helpers ──
+
+// ── Helpers ──
+
+/** PATCH /api/crews/[id] — Edit crew (owner only) */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const { name, description, privacy } = await req.json();
+
+  // Verify ownership
+  const crew = await prisma.crew.findUnique({
+    where: { id },
+    select: { ownerId: true },
+  });
+
+  if (!crew) {
+    return NextResponse.json({ error: "Crew not found" }, { status: 404 });
+  }
+
+  if (crew.ownerId !== session.user.id) {
+    return NextResponse.json(
+      { error: "Only the crew owner can edit" },
+      { status: 403 },
+    );
+  }
+
+  const data: Record<string, string> = {};
+  if (name?.trim()) data.name = name.trim();
+  if (description !== undefined) data.description = description?.trim() || "";
+  if (privacy && ["PUBLIC", "INVITE_ONLY", "PRIVATE"].includes(privacy)) {
+    data.privacy = privacy;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
+
+  await prisma.crew.update({ where: { id }, data });
+
+  return NextResponse.json({ success: true });
+}
+
+/** DELETE /api/crews/[id] — Delete crew (owner only) */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  const crew = await prisma.crew.findUnique({
+    where: { id },
+    select: { ownerId: true },
+  });
+
+  if (!crew) {
+    return NextResponse.json({ error: "Crew not found" }, { status: 404 });
+  }
+
+  if (crew.ownerId !== session.user.id) {
+    return NextResponse.json(
+      { error: "Only the crew owner can delete" },
+      { status: 403 },
+    );
+  }
+
+  await prisma.crew.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
+}
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return "??";

@@ -297,7 +297,7 @@ export default function ImportPage() {
                         <li>Copia y pega la key aquí</li>
                       </ol>
                       <p className="pt-2 text-zinc-600">
-                        💡 Necesitas Hevy Pro (2,99€/mes). También puedes generarla desde la app: Ajustes → Developer API
+                        💡 Necesitas Hevy Pro (2,99€/mes). La API key solo se genera desde la web, no desde la app.
                       </p>
                     </div>
 

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
@@ -37,8 +36,14 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      if (!result?.ok) {
+        setError("Error al iniciar sesión");
+        setLoading(false);
+        return;
+      }
+
+      // Full-page redirect ensures NextAuth session cookie is set properly
+      window.location.href = callbackUrl;
     } catch {
       setError("Error al iniciar sesión");
       setLoading(false);
@@ -70,22 +75,23 @@ export default function LoginPage() {
         return;
       }
 
-      // Auto sign in after signup
+      // Auto sign in after signup — use full redirect so NextAuth sets session
       const signInResult = await signIn("credentials", {
         email,
         password,
         redirect: false,
       });
 
-      if (signInResult?.error) {
-        setError("Cuenta creada, pero no se pudo iniciar sesión. Intenta desde la pestaña Iniciar Sesión.");
+      if (!signInResult?.ok || signInResult?.error) {
+        setError(
+          "Cuenta creada. Ya puedes iniciar sesión desde la otra pestaña.",
+        );
         setTab("login");
         setLoading(false);
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      window.location.href = callbackUrl;
     } catch {
       setError("Error al crear la cuenta");
       setLoading(false);

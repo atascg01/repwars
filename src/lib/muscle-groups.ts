@@ -14,19 +14,19 @@ const MUSCLE_GROUPS: Record<string, string[]> = {
     "hip thrust", "glute", "glúteo", "patada", "kickback", "puente",
     "abducción", "abductor", "abduction",
   ],
+  back: [
+    "remo", "row", "dominad", "pull up", "chin up", "jalón",
+    "lat pulldown", "pulldown", "dorsal", "pullover",
+  ],
   chest: [
     "press banca", "bench press", "pectoral", "pecho", "chest press",
     "mariposa", "butterfly", "pec deck", "crossover", "fondos",
     "dip", "apertura", "fly", "push up", "flexión",
   ],
-  back: [
-    "remo", "row", "dominad", "pull up", "chin up", "jalón",
-    "lat pulldown", "pulldown", "dorsal", "pullover",
-  ],
   shoulders: [
     "hombro", "shoulder", "press militar", "military press", "arnold",
-    "elevación lateral", "lateral raise", "vuelo", "reverse pec deck",
-    "pájaro", "face pull", "upright row",
+    "elevación lateral", "lateral raise", "laterales", "vuelo",
+    "reverse pec deck", "pájaro", "face pull", "upright row",
   ],
   biceps: [
     "curl", "bicep", "bíceps", "curl de bíceps", "martillo", "hammer",
@@ -40,7 +40,7 @@ const MUSCLE_GROUPS: Record<string, string[]> = {
     "abdominal", "crunch", "abdomen", "core", "plank", "plancha",
     "sit up", "elevación de pierna", "leg raise", "abs",
   ],
-  calves: [
+  calf: [
     "gemelo", "calf", "elevación de talones", "heel raise",
   ],
   adductors: ["aducción", "adductor", "adduction"],
@@ -63,8 +63,10 @@ export function guessMuscleGroup(title: string): string | null {
   for (const [group, patterns] of Object.entries(MUSCLE_GROUPS)) {
     for (const pattern of patterns) {
       if (lower.includes(pattern)) {
-        // Remove trailing 's' for display
-        return group.replace(/s$/, "");
+        // Normalize group name (handle plurals)
+    // Irregular: calves → calf
+    if (group === "calves") return "calf";
+    return group.replace(/s$/, "");
       }
     }
   }
